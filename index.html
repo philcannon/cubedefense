@@ -11,22 +11,12 @@
             left: 10px;
             color: white;
             font-family: Arial, sans-serif;
-            background: rgba(0, 0, 0, 0.5);
-            padding: 5px;
         }
         #shop {
             position: absolute;
             top: 10px;
             right: 10px;
             color: white;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 10px;
-            font-family: Arial, sans-serif;
-        }
-        button {
-            margin: 5px;
-            padding: 5px 10px;
-            cursor: pointer;
         }
         #pauseMenu {
             position: absolute;
@@ -53,19 +43,6 @@
             top: 110px;
             left: 10px;
             padding: 5px 10px;
-            cursor: pointer;
-        }
-        .health-bar {
-            position: absolute;
-            background: #ff0000;
-            height: 5px;
-            top: -10px;
-        }
-        .health-bar-bg {
-            position: absolute;
-            background: #666666;
-            height: 5px;
-            top: -10px;
         }
         #levelDisplay {
             position: absolute;
@@ -82,21 +59,8 @@
     </style>
 </head>
 <body>
-    <div id="ui">
-        <div>Health: <span id="health">100</span></div>
-        <div>Coins: <span id="coins">0</span></div>
-        <div>Kills: <span id="kills">0</span></div>
-        <div>Wave: <span id="wave">1</span></div>
-        <div>Special: <span id="special">Ready (Q)</span></div>
-    </div>
-    <div id="shop">
-        <h3>Shop</h3>
-        <button onclick="buyUpgrade('armor')">Armor (50 coins)</button>
-        <button onclick="buyUpgrade('health')">Health (30 coins)</button>
-        <button onclick="buyUpgrade('speed')">Speed (40 coins)</button>
-        <button onclick="buyUpgrade('weapon')">Weapon (60 coins)</button>
-        <button onclick="buyUpgrade('ally')">Ally Cube (30 coins)</button>
-    </div>
+    <div id="ui"></div>
+    <div id="shop"></div>
     <div id="pauseMenu">
         <h2>Paused</h2>
         <button onclick="resumeGame()">Resume</button>
@@ -105,10 +69,14 @@
         <h3>Top Scores</h3>
         <ol id="leaderboardList"></ol>
     </div>
-    <button id="pauseButton" onclick="togglePause()">Pause</button>
+    <div id="pauseButton"></div>
     <div id="levelDisplay">Level 1</div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <script src="https://unpkg.com/@playcanvas/pcui@1.2.1/dist/pcui.js"></script>
+    <script src="https://unpkg.com/@playcanvas/observer@1.2.1/dist/observer.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/@playcanvas/pcui@1.2.1/dist/pcui.css">
+
     <script>
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -136,19 +104,17 @@
         playerGroup.add(player, sword);
         scene.add(playerGroup);
 
-        // Lighting
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
         scene.add(ambientLight);
         const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
         directionalLight.position.set(0, 10, 10);
         scene.add(directionalLight);
 
-        // Sky and Sun
         scene.background = new THREE.Color(0x87ceeb);
         const sunGeometry = new THREE.SphereGeometry(2, 32, 32);
         const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
         const sun = new THREE.Mesh(sunGeometry, sunMaterial);
-        sun.position.set(-20, 20, 20); // Top left
+        sun.position.set(-20, 20, 20);
         scene.add(sun);
         for (let i = 0; i < 5; i++) {
             const cloudGeometry = new THREE.SphereGeometry(2, 16, 16);
@@ -163,9 +129,8 @@
             scene.add(cloud);
         }
 
-        // Light green ground
         const groundGeometry = new THREE.PlaneGeometry(50, 30);
-        const groundMaterial = new THREE.MeshPhongMaterial({ color: 0x90ee90 }); // Light green
+        const groundMaterial = new THREE.MeshPhongMaterial({ color: 0x90ee90 });
         const ground = new THREE.Mesh(groundGeometry, groundMaterial);
         ground.rotation.x = -Math.PI / 2;
         scene.add(ground);
@@ -204,6 +169,64 @@
         let leaderboard = JSON.parse(localStorage.getItem('cubeDefenseLeaderboard')) || [];
         updateLeaderboardUI();
 
+        // PCUI Setup
+        const observer = new Observer(playerStats);
+
+        const uiContainer = document.getElementById('ui');
+        const healthLabel = new pcui.Label({ text: 'Health: 100' });
+        const coinsLabel = new pcui.Label({ text: 'Coins: 0' });
+        const killsLabel = new pcui.Label({ text: 'Kills: 0' });
+        const waveLabel = new pcui.Label({ text: 'Wave: 1' });
+        const specialLabel = new pcui.Label({ text: 'Special: Ready (Q)' });
+
+        healthLabel.binding = new pcui.BindingObserversToElement();
+        healthLabel.link(observer, 'health', (value) => `Health: ${Math.floor(value)}`);
+        coinsLabel.binding = new pcui.BindingObserversToElement();
+        coinsLabel.link(observer, 'coins', (value) => `Coins: ${value}`);
+        killsLabel.binding = new pcui.BindingObserversToElement();
+        killsLabel.link(observer, 'kills', (value) => `Kills: ${value}`);
+        waveLabel.binding = new pcui.BindingObserversToElement();
+        waveLabel.link(observer, 'wave', (value) => `Wave: ${value}`);
+        specialLabel.binding = new pcui.BindingObserversToElement();
+        specialLabel.link(observer, ['specialActive', 'specialTimer', 'specialCooldown'], 
+            (active, timer, cooldown) => active ? `Active (${Math.ceil(timer)}s)` : 
+            cooldown > 0 ? `Cooldown (${Math.ceil(cooldown)}s)` : 'Ready (Q)');
+
+        uiContainer.appendChild(healthLabel.dom);
+        uiContainer.appendChild(coinsLabel.dom);
+        uiContainer.appendChild(killsLabel.dom);
+        uiContainer.appendChild(waveLabel.dom);
+        uiContainer.appendChild(specialLabel.dom);
+
+        const shopContainer = document.getElementById('shop');
+        const shopTitle = new pcui.Label({ text: 'Shop' });
+        shopTitle.class.add('pcui-label-header');
+        shopContainer.appendChild(shopTitle.dom);
+
+        const upgrades = [
+            { type: 'armor', cost: 50, text: 'Armor (50 coins)' },
+            { type: 'health', cost: 30, text: 'Health (30 coins)' },
+            { type: 'speed', cost: 40, text: 'Speed (40 coins)' },
+            { type: 'weapon', cost: 60, text: 'Weapon (60 coins)' },
+            { type: 'ally', cost: 30, text: 'Ally Cube (30 coins)' }
+        ];
+
+        upgrades.forEach(upgrade => {
+            const button = new pcui.Button({
+                text: upgrade.text,
+                enabled: observer.get('coins') >= upgrade.cost
+            });
+            button.on('click', () => buyUpgrade(upgrade.type));
+            shopContainer.appendChild(button.dom);
+            observer.on('coins:change', (value) => {
+                button.enabled = value >= upgrade.cost;
+            });
+        });
+
+        const pauseButton = new pcui.Button({ text: 'Pause' });
+        pauseButton.on('click', togglePause);
+        document.getElementById('pauseButton').appendChild(pauseButton.dom);
+
         function showLevelDisplay() {
             const levelDisplay = document.getElementById('levelDisplay');
             levelDisplay.style.display = 'block';
@@ -214,11 +237,14 @@
 
         function resetGame() {
             saveScore(playerStats.kills);
-            playerStats.health = playerStats.maxHealth;
-            playerStats.stunTimer = 0;
-            playerStats.coins = 0;
-            playerStats.kills = 0;
-            wave = 1;
+            Object.assign(playerStats, {
+                health: playerStats.maxHealth,
+                stunTimer: 0,
+                coins: 0,
+                kills: 0,
+                wave: 1
+            });
+            observer.set(playerStats);
             playerGroup.position.set(0, 0.5, 0);
             enemies.forEach(enemy => scene.remove(enemy.mesh || enemy));
             enemies = [];
@@ -266,7 +292,7 @@
             if (type === 'strong') {
                 size = 1.5;
                 color = 0x0000ff;
-                hits = 7; // Reduced from 10
+                hits = 7;
                 speed = 0.03;
                 damage = 1;
             } else if (type === 'boss') {
@@ -435,6 +461,9 @@
             playerStats.specialActive = true;
             playerStats.specialTimer = 4;
             playerStats.specialCooldown = 20;
+            observer.set('specialActive', true);
+            observer.set('specialTimer', 4);
+            observer.set('specialCooldown', 20);
             updateUI();
         }
 
@@ -460,14 +489,13 @@
             }
             sword.rotation.x *= 0.9;
 
-            // Coin collection
             for (let i = coins.length - 1; i >= 0; i--) {
                 const coin = coins[i];
                 if (playerGroup.position.distanceTo(coin.position) < 1) {
                     playerStats.coins += coin.value;
+                    observer.set('coins', playerStats.coins);
                     scene.remove(coin);
                     coins.splice(i, 1);
-                    updateUI();
                 }
             }
 
@@ -487,9 +515,14 @@
             }
             if (playerStats.specialActive) {
                 playerStats.specialTimer -= 0.016;
-                if (playerStats.specialTimer <= 0) playerStats.specialActive = false;
+                observer.set('specialTimer', playerStats.specialTimer);
+                if (playerStats.specialTimer <= 0) {
+                    playerStats.specialActive = false;
+                    observer.set('specialActive', false);
+                }
             }
             playerStats.specialCooldown -= 0.016;
+            observer.set('specialCooldown', playerStats.specialCooldown);
             playerStats.stunTimer = Math.max(0, playerStats.stunTimer - 0.016);
 
             for (let i = trailParticles.length - 1; i >= 0; i--) {
@@ -508,7 +541,7 @@
                 bubble.position.z += Math.sin(Date.now() * 0.002 + i) * 0.7;
             });
 
-            updateUI();
+            observer.set('health', playerStats.health);
         }
 
         function attack() {
@@ -527,11 +560,11 @@
                         scene.remove(enemy);
                         enemies.splice(i, 1);
                         playerStats.kills++;
+                        observer.set('kills', playerStats.kills);
                         if (wave >= 5 && playerStats.kills % 50 === 0) {
                             createPortal('boss');
                             spawnEnemy('boss');
                         } else if (playerStats.kills % 10 === 0) spawnEnemy('strong');
-                        updateUI();
                     }
                 }
             }
@@ -560,6 +593,7 @@
                         enemy.sword.rotation.x = Math.PI / 4;
                         if (playerGroup.position.distanceTo(enemy.position) < 3) {
                             playerStats.health -= enemy.damage;
+                            observer.set('health', playerStats.health);
                         }
                         enemy.attackCooldown = 0.5;
                     }
@@ -578,10 +612,10 @@
 
                 if (playerGroup.position.distanceTo(enemy.position) < 1) {
                     playerStats.health -= Math.max(enemy.damage - (playerStats.armorTimer > 0 ? playerStats.armor * 0.2 : playerStats.armor * 0.1), 0.1);
+                    observer.set('health', playerStats.health);
                     if (enemy.type === 'boss') {
                         playerStats.stunTimer = 2;
                     }
-                    updateUI();
                     if (playerStats.health <= 0) {
                         alert('Game Over! Score: ' + playerStats.kills);
                         resetGame();
@@ -632,34 +666,30 @@
             if (type === 'armor' && playerStats.coins >= 50 && playerStats.armorTimer <= 0) {
                 playerStats.armorTimer = 17;
                 playerStats.coins -= 50;
+                observer.set('coins', playerStats.coins);
                 for (let i = 0; i < 3; i++) createArmorBubble();
             } else if (type === 'health' && playerStats.coins >= 30) {
                 playerStats.maxHealth += 20;
                 playerStats.health = playerStats.maxHealth;
+                observer.set('health', playerStats.health);
+                observer.set('maxHealth', playerStats.maxHealth);
                 playerStats.coins -= 30;
+                observer.set('coins', playerStats.coins);
             } else if (type === 'speed' && playerStats.coins >= 40 && playerStats.speedTimer <= 0) {
                 playerStats.speedTimer = 10;
                 playerStats.coins -= 40;
+                observer.set('coins', playerStats.coins);
             } else if (type === 'weapon' && playerStats.coins >= 60 && playerStats.weaponTimer <= 0) {
                 playerStats.weaponTimer = 15;
                 playerStats.damage = 3;
                 sword.scale.set(1.5, 1.5, 1.5);
                 playerStats.coins -= 60;
+                observer.set('coins', playerStats.coins);
             } else if (type === 'ally' && playerStats.coins >= 30) {
                 spawnAlly();
                 playerStats.coins -= 30;
+                observer.set('coins', playerStats.coins);
             }
-            updateUI();
-        }
-
-        function updateUI() {
-            document.getElementById('health').textContent = Math.floor(playerStats.health);
-            document.getElementById('coins').textContent = playerStats.coins;
-            document.getElementById('kills').textContent = playerStats.kills;
-            document.getElementById('wave').textContent = wave;
-            document.getElementById('special').textContent = 
-                playerStats.specialActive ? `Active (${Math.ceil(playerStats.specialTimer)}s)` :
-                playerStats.specialCooldown > 0 ? `Cooldown (${Math.ceil(playerStats.specialCooldown)}s)` : 'Ready (Q)';
         }
 
         function saveScore(score) {
@@ -682,13 +712,15 @@
 
         function spawnWave() {
             enemiesToSpawn = wave * 5;
-            if (wave % 2 === 0) spawnEnemy('fast'); // More frequent speedy cubes
+            if (wave % 2 === 0) spawnEnemy('fast');
             if (wave === 5) {
                 createPortal('boss');
                 spawnEnemy('boss');
             }
             waveTimer = 10;
             wave++;
+            playerStats.wave = wave;
+            observer.set('wave', wave);
             document.getElementById('levelDisplay').textContent = `Level ${wave - 1}`;
             showLevelDisplay();
         }
