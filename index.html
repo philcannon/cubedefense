@@ -66,40 +66,39 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        // Player setup with sword
+        // Player setup with longer sword
         const playerGroup = new THREE.Group();
         const playerGeometry = new THREE.BoxGeometry(1, 1, 1);
         const playerMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
         const player = new THREE.Mesh(playerGeometry, playerMaterial);
-        const swordGeometry = new THREE.BoxGeometry(0.2, 0.2, 1.5);
+        const swordGeometry = new THREE.BoxGeometry(0.2, 0.2, 2.5); // Longer sword
         const swordMaterial = new THREE.MeshBasicMaterial({ color: 0xaaaaaa });
         const sword = new THREE.Mesh(swordGeometry, swordMaterial);
-        sword.position.set(0.6, 0, 0);
+        sword.position.set(0.6, 0, 0.5); // Adjusted for longer sword
         playerGroup.add(player, sword);
         scene.add(playerGroup);
         camera.position.set(0, 10, 15);
         camera.lookAt(playerGroup.position);
 
-        // Ground
         const groundGeometry = new THREE.PlaneGeometry(50, 30);
         const groundMaterial = new THREE.MeshBasicMaterial({ color: 0x888888 });
         const ground = new THREE.Mesh(groundGeometry, groundMaterial);
         ground.rotation.x = -Math.PI / 2;
         scene.add(ground);
 
-        // Game state
         let playerStats = {
             health: 100,
             maxHealth: 100,
             coins: 0,
             kills: 0,
-            speed: 0.15, // Starting speed
+            speed: 0.15,
             damage: 3,
             armor: 0,
             attackCooldown: 0,
             specialCooldown: 0,
             specialActive: false,
-            specialTimer: 0
+            specialTimer: 0,
+            stunTimer: 0
         };
 
         let enemies = [];
@@ -110,6 +109,7 @@
 
         function resetGame() {
             playerStats.health = playerStats.maxHealth;
+            playerStats.stunTimer = 0;
             playerGroup.position.set(0, 0.5, 0);
             enemies.forEach(enemy => scene.remove(enemy));
             enemies = [];
@@ -134,16 +134,40 @@
             portals.push(portal);
         }
 
-        function spawnEnemy() {
+        function spawnEnemy(type = 'normal') {
             if (portals.length === 0) return;
             const portal = portals[Math.floor(Math.random() * portals.length)];
-            const enemyGeometry = new THREE.BoxGeometry(1, 1, 1);
-            const enemyMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+            
+            let size, color, hits;
+            if (type === 'strong') {
+                size = 1.5;
+                color = 0x0000ff; // Blue
+                hits = 10;
+            } else if (type === 'boss') {
+                size = 2;
+                color = 0x800080; // Purple
+                hits = 25;
+            } else {
+                size = 1;
+                color = 0xff0000; // Red
+                hits = 1;
+            }
+
+            const enemyGeometry = new THREE.BoxGeometry(size, size, size);
+            const enemyMaterial = new THREE.MeshBasicMaterial({ color });
             const enemy = new THREE.Mesh(enemyGeometry, enemyMaterial);
-            let baseHealth = Math.random() * (20 - 5) + 5;
-            enemy.health = baseHealth * (0.5 + Math.random());
+            enemy.hitsRemaining = hits;
             enemy.position.copy(portal.position);
-            enemy.position.y = 0.5;
+            enemy.position.y = size / 2;
+
+            if (type === 'boss') {
+                const crownGeometry = new THREE.BoxGeometry(0.5, 0.3, 0.5);
+                const crownMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+                const crown = new THREE.Mesh(crownGeometry, crownMaterial);
+                crown.position.y = size / 2 + 0.15;
+                enemy.add(crown);
+            }
+
             scene.add(enemy);
             enemies.push(enemy);
         }
@@ -183,7 +207,7 @@
         }
 
         function updatePlayer() {
-            if (isPaused) return;
+            if (isPaused || playerStats.stunTimer > 0) return;
 
             let currentSpeed = playerStats.specialActive ? playerStats.speed * 2 : playerStats.speed;
             if (keys['ArrowUp']) playerGroup.position.z -= currentSpeed;
@@ -194,7 +218,6 @@
             playerGroup.position.x = Math.max(-24, Math.min(24, playerGroup.position.x));
             playerGroup.position.z = Math.max(-14, Math.min(14, playerGroup.position.z));
 
-            // Sword animation
             if (keys[' '] && playerStats.attackCooldown <= 0) {
                 attack();
                 playerStats.attackCooldown = 0.5;
@@ -208,6 +231,7 @@
                 if (playerStats.specialTimer <= 0) playerStats.specialActive = false;
             }
             playerStats.specialCooldown -= 0.016;
+            playerStats.stunTimer = Math.max(0, playerStats.stunTimer - 0.016);
             updateUI();
         }
 
@@ -215,13 +239,15 @@
             const damage = playerStats.specialActive ? playerStats.damage * 2 : playerStats.damage;
             for (let i = enemies.length - 1; i >= 0; i--) {
                 const enemy = enemies[i];
-                if (playerGroup.position.distanceTo(enemy.position) < 2) {
-                    enemy.health -= damage;
-                    if (enemy.health <= 0) {
+                if (playerGroup.position.distanceTo(enemy.position) < 3) { // Larger hitbox
+                    enemy.hitsRemaining--;
+                    if (enemy.hitsRemaining <= 0) {
                         scene.remove(enemy);
                         enemies.splice(i, 1);
                         playerStats.coins += Math.floor(Math.random() * 5) + 1;
                         playerStats.kills++;
+                        if (playerStats.kills % 50 === 0) spawnEnemy('boss');
+                        else if (playerStats.kills % 10 === 0) spawnEnemy('strong');
                         updateUI();
                     }
                 }
@@ -240,10 +266,13 @@
             if (isPaused) return;
             enemies.forEach(enemy => {
                 const direction = playerGroup.position.clone().sub(enemy.position).normalize();
-                enemy.position.add(direction.multiplyScalar(0.03)); // Slower enemy speed
+                enemy.position.add(direction.multiplyScalar(0.03));
                 
                 if (playerGroup.position.distanceTo(enemy.position) < 1) {
                     playerStats.health -= Math.max(1 - playerStats.armor * 0.1, 0.1);
+                    if (enemy.hitsRemaining > 1 && enemy.scale.x > 1.5) { // Boss stun
+                        playerStats.stunTimer = 2;
+                    }
                     updateUI();
                     if (playerStats.health <= 0) {
                         alert('Game Over! Score: ' + playerStats.kills);
@@ -265,8 +294,8 @@
                     const direction = nearestEnemy.enemy.position.clone().sub(ally.position).normalize();
                     ally.position.add(direction.multiplyScalar(0.08));
                     if (nearestEnemy.dist < 1) {
-                        nearestEnemy.enemy.health -= 2;
-                        if (nearestEnemy.enemy.health <= 0) {
+                        nearestEnemy.enemy.hitsRemaining--;
+                        if (nearestEnemy.enemy.hitsRemaining <= 0) {
                             scene.remove(nearestEnemy.enemy);
                             enemies = enemies.filter(e => e !== nearestEnemy.enemy);
                         }
@@ -320,7 +349,7 @@
 
                 spawnTimer += 0.016;
                 if (spawnTimer > 2 && portals.length > 0) {
-                    spawnEnemy();
+                    spawnEnemy('normal');
                     spawnTimer = 0;
                 }
             }
