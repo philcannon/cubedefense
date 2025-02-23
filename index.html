@@ -36,6 +36,15 @@
             color: white;
             display: none;
         }
+        #leaderboard {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            color: white;
+            font-family: Arial, sans-serif;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+        }
     </style>
 </head>
 <body>
@@ -43,6 +52,7 @@
         <div>Health: <span id="health">100</span></div>
         <div>Coins: <span id="coins">0</span></div>
         <div>Kills: <span id="kills">0</span></div>
+        <div>Wave: <span id="wave">1</span></div>
         <div>Special: <span id="special">Ready (Q)</span></div>
     </div>
     <div id="shop">
@@ -57,6 +67,10 @@
         <h2>Paused</h2>
         <button onclick="resumeGame()">Resume</button>
     </div>
+    <div id="leaderboard">
+        <h3>Top Scores</h3>
+        <ol id="leaderboardList"></ol>
+    </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
     <script>
@@ -66,22 +80,23 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        // Player setup with longer sword
+        // Player setup
         const playerGroup = new THREE.Group();
         const playerGeometry = new THREE.BoxGeometry(1, 1, 1);
         const playerMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
         const player = new THREE.Mesh(playerGeometry, playerMaterial);
-        const swordGeometry = new THREE.BoxGeometry(0.2, 0.2, 2.5); // Longer sword
+        const swordGeometry = new THREE.BoxGeometry(0.2, 0.2, 2.5);
         const swordMaterial = new THREE.MeshBasicMaterial({ color: 0xaaaaaa });
         const sword = new THREE.Mesh(swordGeometry, swordMaterial);
-        sword.position.set(0.6, 0, 0.5); // Adjusted for longer sword
+        sword.position.set(0.6, 0, 0.5);
         playerGroup.add(player, sword);
         scene.add(playerGroup);
         camera.position.set(0, 10, 15);
         camera.lookAt(playerGroup.position);
 
+        // Grass ground
         const groundGeometry = new THREE.PlaneGeometry(50, 30);
-        const groundMaterial = new THREE.MeshBasicMaterial({ color: 0x888888 });
+        const groundMaterial = new THREE.MeshBasicMaterial({ color: 0x00cc00 }); // Green grass
         const ground = new THREE.Mesh(groundGeometry, groundMaterial);
         ground.rotation.x = -Math.PI / 2;
         scene.add(ground);
@@ -91,25 +106,42 @@
             maxHealth: 100,
             coins: 0,
             kills: 0,
+            baseSpeed: 0.15,
             speed: 0.15,
-            damage: 3,
+            damage: 1,
             armor: 0,
             attackCooldown: 0,
             specialCooldown: 0,
             specialActive: false,
             specialTimer: 0,
-            stunTimer: 0
+            stunTimer: 0,
+            speedTimer: 0,
+            armorTimer: 0,
+            weaponTimer: 0
         };
 
         let enemies = [];
         let portals = [];
         let allies = [];
+        let trailParticles = [];
+        let armorBubbles = [];
         const keys = {};
         let isPaused = false;
+        let wave = 1;
+        let waveTimer = 0;
+        let enemiesToSpawn = 0;
+
+        // Load leaderboard
+        let leaderboard = JSON.parse(localStorage.getItem('cubeDefenseLeaderboard')) || [];
+        updateLeaderboardUI();
 
         function resetGame() {
+            saveScore(playerStats.kills);
             playerStats.health = playerStats.maxHealth;
             playerStats.stunTimer = 0;
+            playerStats.coins = 0;
+            playerStats.kills = 0;
+            wave = 1;
             playerGroup.position.set(0, 0.5, 0);
             enemies.forEach(enemy => scene.remove(enemy));
             enemies = [];
@@ -117,7 +149,12 @@
             portals = [];
             allies.forEach(ally => scene.remove(ally));
             allies = [];
+            trailParticles.forEach(p => scene.remove(p));
+            trailParticles = [];
+            armorBubbles.forEach(b => scene.remove(b));
+            armorBubbles = [];
             createPortal();
+            createPortal(); // Start with 2 portals
             updateUI();
         }
 
@@ -141,15 +178,15 @@
             let size, color, hits;
             if (type === 'strong') {
                 size = 1.5;
-                color = 0x0000ff; // Blue
+                color = 0x0000ff;
                 hits = 10;
             } else if (type === 'boss') {
                 size = 2;
-                color = 0x800080; // Purple
+                color = 0x800080;
                 hits = 25;
             } else {
                 size = 1;
-                color = 0xff0000; // Red
+                color = 0xff0000;
                 hits = 1;
             }
 
@@ -177,9 +214,27 @@
             const allyMaterial = new THREE.MeshBasicMaterial({ color: 0x0000ff });
             const ally = new THREE.Mesh(allyGeometry, allyMaterial);
             ally.position.copy(playerGroup.position);
-            ally.health = 50;
+            ally.timer = 7; // Lasts 7 seconds
             scene.add(ally);
             allies.push(ally);
+        }
+
+        function createTrailParticle() {
+            const particleGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+            const particleMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+            particle.position.copy(playerGroup.position);
+            particle.position.y = 0.5;
+            scene.add(particle);
+            trailParticles.push({ mesh: particle, life: 0.5 });
+        }
+
+        function createArmorBubble() {
+            const bubbleGeometry = new THREE.SphereGeometry(0.2, 8, 8);
+            const bubbleMaterial = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.5 });
+            const bubble = new THREE.Mesh(bubbleGeometry, bubbleMaterial);
+            scene.add(bubble);
+            armorBubbles.push(bubble);
         }
 
         document.addEventListener('keydown', (e) => {
@@ -209,7 +264,7 @@
         function updatePlayer() {
             if (isPaused || playerStats.stunTimer > 0) return;
 
-            let currentSpeed = playerStats.specialActive ? playerStats.speed * 2 : playerStats.speed;
+            let currentSpeed = playerStats.specialActive ? playerStats.baseSpeed * 2 : playerStats.speed;
             if (keys['ArrowUp']) playerGroup.position.z -= currentSpeed;
             if (keys['ArrowDown']) playerGroup.position.z += currentSpeed;
             if (keys['ArrowLeft']) playerGroup.position.x -= currentSpeed;
@@ -225,22 +280,56 @@
             }
             sword.rotation.x *= 0.9;
 
+            // Update timers
             playerStats.attackCooldown -= 0.016;
+            playerStats.speedTimer = Math.max(0, playerStats.speedTimer - 0.016);
+            playerStats.armorTimer = Math.max(0, playerStats.armorTimer - 0.016);
+            playerStats.weaponTimer = Math.max(0, playerStats.weaponTimer - 0.016);
+            if (playerStats.speedTimer > 0) {
+                playerStats.speed = playerStats.baseSpeed * 2;
+                if (Math.random() < 0.3) createTrailParticle();
+            } else {
+                playerStats.speed = playerStats.baseSpeed;
+            }
+            if (playerStats.armorTimer <= 0 && armorBubbles.length > 0) {
+                armorBubbles.forEach(b => scene.remove(b));
+                armorBubbles = [];
+            }
             if (playerStats.specialActive) {
                 playerStats.specialTimer -= 0.016;
                 if (playerStats.specialTimer <= 0) playerStats.specialActive = false;
             }
             playerStats.specialCooldown -= 0.016;
             playerStats.stunTimer = Math.max(0, playerStats.stunTimer - 0.016);
+
+            // Update trail particles
+            for (let i = trailParticles.length - 1; i >= 0; i--) {
+                trailParticles[i].life -= 0.016;
+                trailParticles[i].mesh.scale.multiplyScalar(0.95);
+                if (trailParticles[i].life <= 0) {
+                    scene.remove(trailParticles[i].mesh);
+                    trailParticles.splice(i, 1);
+                }
+            }
+
+            // Update armor bubbles
+            armorBubbles.forEach((bubble, i) => {
+                bubble.position.copy(playerGroup.position);
+                bubble.position.y = 0.5 + Math.sin(Date.now() * 0.002 + i) * 0.5;
+                bubble.position.x += Math.cos(Date.now() * 0.002 + i) * 0.7;
+                bubble.position.z += Math.sin(Date.now() * 0.002 + i) * 0.7;
+            });
+
             updateUI();
         }
 
         function attack() {
             const damage = playerStats.specialActive ? playerStats.damage * 2 : playerStats.damage;
+            const hitRange = playerStats.weaponTimer > 0 ? 4 : 3;
             for (let i = enemies.length - 1; i >= 0; i--) {
                 const enemy = enemies[i];
-                if (playerGroup.position.distanceTo(enemy.position) < 3) { // Larger hitbox
-                    enemy.hitsRemaining--;
+                if (playerGroup.position.distanceTo(enemy.position) < hitRange) {
+                    enemy.hitsRemaining -= damage;
                     if (enemy.hitsRemaining <= 0) {
                         scene.remove(enemy);
                         enemies.splice(i, 1);
@@ -269,8 +358,8 @@
                 enemy.position.add(direction.multiplyScalar(0.03));
                 
                 if (playerGroup.position.distanceTo(enemy.position) < 1) {
-                    playerStats.health -= Math.max(1 - playerStats.armor * 0.1, 0.1);
-                    if (enemy.hitsRemaining > 1 && enemy.scale.x > 1.5) { // Boss stun
+                    playerStats.health -= Math.max(1 - (playerStats.armorTimer > 0 ? playerStats.armor * 0.2 : playerStats.armor * 0.1), 0.1);
+                    if (enemy.hitsRemaining > 1 && enemy.scale.x > 1.5) {
                         playerStats.stunTimer = 2;
                     }
                     updateUI();
@@ -301,8 +390,8 @@
                         }
                     }
                 }
-                ally.health -= 0.1;
-                if (ally.health <= 0) {
+                ally.timer -= 0.016;
+                if (ally.timer <= 0) {
                     scene.remove(ally);
                     allies.splice(index, 1);
                 }
@@ -310,18 +399,21 @@
         }
 
         function buyUpgrade(type) {
-            if (type === 'armor' && playerStats.coins >= 50) {
-                playerStats.armor++;
+            if (type === 'armor' && playerStats.coins >= 50 && playerStats.armorTimer <= 0) {
+                playerStats.armorTimer = 17;
                 playerStats.coins -= 50;
+                for (let i = 0; i < 3; i++) createArmorBubble();
             } else if (type === 'health' && playerStats.coins >= 30) {
                 playerStats.maxHealth += 20;
                 playerStats.health = playerStats.maxHealth;
                 playerStats.coins -= 30;
-            } else if (type === 'speed' && playerStats.coins >= 40) {
-                playerStats.speed += 0.02;
+            } else if (type === 'speed' && playerStats.coins >= 40 && playerStats.speedTimer <= 0) {
+                playerStats.speedTimer = 10;
                 playerStats.coins -= 40;
-            } else if (type === 'weapon' && playerStats.coins >= 60) {
-                playerStats.damage += 2;
+            } else if (type === 'weapon' && playerStats.coins >= 60 && playerStats.weaponTimer <= 0) {
+                playerStats.weaponTimer = 15;
+                playerStats.damage = 3;
+                sword.scale.set(1.5, 1.5, 1.5);
                 playerStats.coins -= 60;
             } else if (type === 'ally' && playerStats.coins >= 10) {
                 spawnAlly();
@@ -334,9 +426,34 @@
             document.getElementById('health').textContent = Math.floor(playerStats.health);
             document.getElementById('coins').textContent = playerStats.coins;
             document.getElementById('kills').textContent = playerStats.kills;
+            document.getElementById('wave').textContent = wave;
             document.getElementById('special').textContent = 
                 playerStats.specialActive ? `Active (${Math.ceil(playerStats.specialTimer)}s)` :
                 playerStats.specialCooldown > 0 ? `Cooldown (${Math.ceil(playerStats.specialCooldown)}s)` : 'Ready (Q)';
+        }
+
+        function saveScore(score) {
+            leaderboard.push(score);
+            leaderboard.sort((a, b) => b - a);
+            leaderboard = leaderboard.slice(0, 5);
+            localStorage.setItem('cubeDefenseLeaderboard', JSON.stringify(leaderboard));
+            updateLeaderboardUI();
+        }
+
+        function updateLeaderboardUI() {
+            const list = document.getElementById('leaderboardList');
+            list.innerHTML = '';
+            leaderboard.forEach(score => {
+                const li = document.createElement('li');
+                li.textContent = score;
+                list.appendChild(li);
+            });
+        }
+
+        function spawnWave() {
+            enemiesToSpawn = wave * 5; // 5 enemies per wave number
+            waveTimer = 10; // 10 seconds between waves
+            wave++;
         }
 
         let spawnTimer = 0;
@@ -347,16 +464,30 @@
                 updateEnemies();
                 updateAllies();
 
-                spawnTimer += 0.016;
-                if (spawnTimer > 2 && portals.length > 0) {
+                // Wave system
+                if (enemiesToSpawn > 0 && spawnTimer <= 0 && portals.length > 0) {
                     spawnEnemy('normal');
-                    spawnTimer = 0;
+                    enemiesToSpawn--;
+                    spawnTimer = 0.5; // Spawn delay between enemies
+                }
+                spawnTimer -= 0.016;
+
+                waveTimer -= 0.016;
+                if (waveTimer <= 0 && enemies.length === 0 && enemiesToSpawn === 0) {
+                    spawnWave();
+                }
+
+                if (playerStats.weaponTimer <= 0 && playerStats.damage > 1) {
+                    playerStats.damage = 1;
+                    sword.scale.set(1, 1, 1);
                 }
             }
             renderer.render(scene, camera);
         }
 
         createPortal();
+        createPortal();
+        spawnWave();
         animate();
 
         window.addEventListener('resize', () => {
