@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Cube Defense</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+        #shop {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            font-family: Arial, sans-serif;
+        }
+        button {
+            margin: 5px;
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <div>Health: <span id="health">100</span></div>
+        <div>Coins: <span id="coins">0</span></div>
+        <div>Kills: <span id="kills">0</span></div>
+    </div>
+    <div id="shop">
+        <h3>Shop</h3>
+        <button onclick="buyUpgrade('armor')">Armor (50 coins)</button>
+        <button onclick="buyUpgrade('health')">Health (30 coins)</button>
+        <button onclick="buyUpgrade('speed')">Speed (40 coins)</button>
+        <button onclick="buyUpgrade('weapon')">Weapon (60 coins)</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Player
+        const playerGeometry = new THREE.BoxGeometry(1, 1, 1);
+        const playerMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+        const player = new THREE.Mesh(playerGeometry, playerMaterial);
+        scene.add(player);
+        camera.position.set(0, 10, 15);
+        camera.lookAt(player.position);
+
+        // Ground
+        const groundGeometry = new THREE.PlaneGeometry(50, 30);
+        const groundMaterial = new THREE.MeshBasicMaterial({ color: 0x888888 });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        scene.add(ground);
+
+        // Game state
+        let playerStats = {
+            health: 100,
+            maxHealth: 100,
+            coins: 0,
+            kills: 0,
+            speed: 0.1,
+            damage: 3,
+            armor: 0,
+            attackCooldown: 0
+        };
+
+        let enemies = [];
+        let portals = [];
+        const keys = {};
+
+        // Portal creation
+        function createPortal() {
+            const portalGeometry = new THREE.CylinderGeometry(2, 2, 0.2, 32);
+            const portalMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+            const portal = new THREE.Mesh(portalGeometry, portalMaterial);
+            portal.position.set(
+                (Math.random() - 0.5) * 45,
+                0.1,
+                (Math.random() - 0.5) * 25
+            );
+            scene.add(portal);
+            portals.push(portal);
+        }
+
+        // Enemy creation
+        function spawnEnemy() {
+            if (portals.length === 0) return;
+            const portal = portals[Math.floor(Math.random() * portals.length)];
+            const enemyGeometry = new THREE.BoxGeometry(1, 1, 1);
+            const enemyMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+            const enemy = new THREE.Mesh(enemyGeometry, enemyMaterial);
+            let baseHealth = Math.random() * (20 - 5) + 5;
+            enemy.health = baseHealth * (0.5 + Math.random());
+            enemy.position.copy(portal.position);
+            enemy.position.y = 0.5;
+            scene.add(enemy);
+            enemies.push(enemy);
+        }
+
+        // Movement
+        document.addEventListener('keydown', (e) => keys[e.key] = true);
+        document.addEventListener('keyup', (e) => keys[e.key] = false);
+
+        function updatePlayer() {
+            if (keys['ArrowUp']) player.position.z -= playerStats.speed;
+            if (keys['ArrowDown']) player.position.z += playerStats.speed;
+            if (keys['ArrowLeft']) player.position.x -= playerStats.speed;
+            if (keys['ArrowRight']) player.position.x += playerStats.speed;
+
+            // Keep player in bounds
+            player.position.x = Math.max(-24, Math.min(24, player.position.x));
+            player.position.z = Math.max(-14, Math.min(14, player.position.z));
+
+            // Attack
+            if (keys[' '] && playerStats.attackCooldown <= 0) {
+                attack();
+                playerStats.attackCooldown = 0.5;
+            }
+            playerStats.attackCooldown -= 0.016;
+        }
+
+        function attack() {
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const enemy = enemies[i];
+                const distance = player.position.distanceTo(enemy.position);
+                if (distance < 2) {
+                    enemy.health -= playerStats.damage;
+                    if (enemy.health <= 0) {
+                        scene.remove(enemy);
+                        enemies.splice(i, 1);
+                        playerStats.coins += Math.floor(Math.random() * 5) + 1;
+                        playerStats.kills++;
+                        updateUI();
+                    }
+                }
+            }
+        }
+
+        // Enemy AI
+        function updateEnemies() {
+            enemies.forEach(enemy => {
+                const direction = player.position.clone().sub(enemy.position).normalize();
+                enemy.position.add(direction.multiplyScalar(0.05));
+                
+                // Enemy attack
+                if (player.position.distanceTo(enemy.position) < 1) {
+                    playerStats.health -= Math.max(1 - playerStats.armor * 0.1, 0.1);
+                    updateUI();
+                    if (playerStats.health <= 0) {
+                        alert('Game Over! Score: ' + playerStats.kills);
+                        location.reload();
+                    }
+                }
+            });
+        }
+
+        // Shop
+        function buyUpgrade(type) {
+            if (type === 'armor' && playerStats.coins >= 50) {
+                playerStats.armor++;
+                playerStats.coins -= 50;
+            } else if (type === 'health' && playerStats.coins >= 30) {
+                playerStats.maxHealth += 20;
+                playerStats.health = playerStats.maxHealth;
+                playerStats.coins -= 30;
+            } else if (type === 'speed' && playerStats.coins >= 40) {
+                playerStats.speed += 0.02;
+                playerStats.coins -= 40;
+            } else if (type === 'weapon' && playerStats.coins >= 60) {
+                playerStats.damage += 2;
+                playerStats.coins -= 60;
+            }
+            updateUI();
+        }
+
+        function updateUI() {
+            document.getElementById('health').textContent = Math.floor(playerStats.health);
+            document.getElementById('coins').textContent = playerStats.coins;
+            document.getElementById('kills').textContent = playerStats.kills;
+        }
+
+        // Game loop
+        let spawnTimer = 0;
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            updatePlayer();
+            updateEnemies();
+
+            spawnTimer += 0.016;
+            if (spawnTimer > 2) {
+                if (portals.length < 3) createPortal();
+                spawnEnemy();
+                spawnTimer = 0;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // Initialize
+        animate();
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
