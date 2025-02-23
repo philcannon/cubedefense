@@ -50,11 +50,22 @@
         }
         #pauseButton {
             position: absolute;
-            top: 10px;
-            left: 50%;
-            transform: translateX(-50%);
+            top: 80px;
+            left: 10px;
             padding: 5px 10px;
             cursor: pointer;
+        }
+        .health-bar {
+            position: absolute;
+            background: #ff0000;
+            height: 5px;
+            top: -10px;
+        }
+        .health-bar-bg {
+            position: absolute;
+            background: #666666;
+            height: 5px;
+            top: -10px;
         }
     </style>
 </head>
@@ -72,7 +83,7 @@
         <button onclick="buyUpgrade('health')">Health (30 coins)</button>
         <button onclick="buyUpgrade('speed')">Speed (40 coins)</button>
         <button onclick="buyUpgrade('weapon')">Weapon (60 coins)</button>
-        <button onclick="buyUpgrade('ally')">Ally Cube (10 coins)</button>
+        <button onclick="buyUpgrade('ally')">Ally Cube (30 coins)</button>
     </div>
     <div id="pauseMenu">
         <h2>Paused</h2>
@@ -119,11 +130,16 @@
         directionalLight.position.set(0, 10, 10);
         scene.add(directionalLight);
 
-        // Sky
-        scene.background = new THREE.Color(0x87ceeb); // Sky blue
-        const cloudGeometry = new THREE.SphereGeometry(2, 16, 16);
-        const cloudMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
+        // Sky and Sun
+        scene.background = new THREE.Color(0x87ceeb);
+        const sunGeometry = new THREE.SphereGeometry(2, 32, 32);
+        const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+        const sun = new THREE.Mesh(sunGeometry, sunMaterial);
+        sun.position.set(20, 20, -20);
+        scene.add(sun);
         for (let i = 0; i < 5; i++) {
+            const cloudGeometry = new THREE.SphereGeometry(2, 16, 16);
+            const cloudMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
             const cloud = new THREE.Mesh(cloudGeometry, cloudMaterial);
             cloud.position.set(
                 (Math.random() - 0.5) * 40,
@@ -134,12 +150,12 @@
             scene.add(cloud);
         }
 
-        // Grass ground
+        // Forest green ground
         const groundGeometry = new THREE.PlaneGeometry(50, 30);
         const groundTexture = new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAABJUlEQVR4nO2USwrCMBCEJ1EQRMTu1u6+gbfoFbyA4M5O3iM4Ozu7u7s7OwWPh8nMzL/fzH4M4MwwjBOCcT4H3sDvgFvgJngL3mFZGZZlYRhWlmXhDHgJjoE34C14C96C9+Ad+AB+BR/BZ/BZfAYfw+fwBXwJX8NX8A18A9/AV/ANfAvfwvfwPXwP34MP4Af4EX4CH8Fn8AV8CV/Cl/AlfAvfwvfwPXwPP4Af4Ef4CX8Cn8AV8CV/Cl/AlfAvfwvfwPXwPP4Af4Ef4CX8Cn8AV8CV/Cl/AlfAvfwvfwPXwPP4Af4Ef4CX8Cn8AV8CV/Cl/AlfAvfwvfwPXwPP4Af4Ef4CX8Cn8AV8CV/Cl/AlfAvfwvfwPXwPP4Af4Ef4CX8Cn8AV8CV/Cl/AFHUnB8xK/qoAAAAASUVORK5CYII=');
         groundTexture.wrapS = groundTexture.wrapT = THREE.RepeatWrapping;
         groundTexture.repeat.set(10, 10);
-        const groundMaterial = new THREE.MeshPhongMaterial({ map: groundTexture, color: 0x00cc00 });
+        const groundMaterial = new THREE.MeshPhongMaterial({ map: groundTexture, color: 0x228B22 }); // Forest green
         const ground = new THREE.Mesh(groundGeometry, groundMaterial);
         ground.rotation.x = -Math.PI / 2;
         scene.add(ground);
@@ -185,7 +201,7 @@
             playerStats.kills = 0;
             wave = 1;
             playerGroup.position.set(0, 0.5, 0);
-            enemies.forEach(enemy => scene.remove(enemy));
+            enemies.forEach(enemy => scene.remove(enemy.mesh || enemy));
             enemies = [];
             portals.forEach(portal => scene.remove(portal));
             portals = [];
@@ -201,38 +217,63 @@
             spawnWave();
         }
 
-        function createPortal() {
+        function createPortal(type = 'normal') {
             const portalGeometry = new THREE.CylinderGeometry(2, 2, 0.2, 32);
-            const portalMaterial = new THREE.MeshPhongMaterial({ color: 0xff0000, shininess: 30 });
+            const portalMaterial = new THREE.MeshPhongMaterial({ 
+                color: type === 'boss' ? 0x800080 : 0xff0000, 
+                shininess: 30 
+            });
             const portal = new THREE.Mesh(portalGeometry, portalMaterial);
             portal.position.set(
                 (Math.random() - 0.5) * 45,
                 0.1,
                 (Math.random() - 0.5) * 25
             );
+            portal.type = type;
             scene.add(portal);
             portals.push(portal);
         }
 
-        function spawnEnemy(type = 'normal') {
-            if (portals.length === 0) return;
-            const portal = portals[Math.floor(Math.random() * portals.length)];
-            
-            let size, color, hits;
+        function spawnEnemy(type = 'normal', fromBoss = false) {
+            const portal = fromBoss ? 
+                portals.find(p => p.type === 'boss') || portals[Math.floor(Math.random() * portals.length)] :
+                portals[Math.floor(Math.random() * portals.length)];
+            if (!portal) return;
+
+            let size, color, hits, speed, damage;
             if (type === 'strong') {
                 size = 1.5;
                 color = 0x0000ff;
                 hits = 10;
+                speed = 0.03;
+                damage = 1;
             } else if (type === 'boss') {
                 size = 2;
                 color = 0x800080;
                 hits = 25;
+                speed = 0.03;
+                damage = 2;
+            } else if (type === 'minion') {
+                size = 0.7;
+                color = 0x800080;
+                hits = 5;
+                speed = 0.04;
+                damage = 0.5;
+            } else if (type === 'fast') {
+                size = 0.8;
+                color = 0x87cefa;
+                hits = 3;
+                speed = 0.08;
+                damage = 0.3;
             } else {
                 size = 1;
                 color = 0xff0000;
                 hits = 1;
+                speed = 0.03;
+                damage = 1;
             }
 
+            const enemyGroup = new THREE.Group();
             const enemyGeometry = new THREE.BoxGeometry(size, size, size);
             const enemyMaterial = new THREE.MeshPhongMaterial({ 
                 color,
@@ -240,20 +281,45 @@
                 specular: 0xffffff
             });
             const enemy = new THREE.Mesh(enemyGeometry, enemyMaterial);
-            enemy.hitsRemaining = hits;
-            enemy.position.copy(portal.position);
-            enemy.position.y = size / 2;
+            enemyGroup.add(enemy);
 
             if (type === 'boss') {
-                const crownGeometry = new THREE.BoxGeometry(0.5, 0.3, 0.5);
-                const crownMaterial = new THREE.MeshPhongMaterial({ color: 0xffff00, shininess: 50 });
-                const crown = new THREE.Mesh(crownGeometry, crownMaterial);
-                crown.position.y = size / 2 + 0.15;
-                enemy.add(crown);
+                const bossSwordGeometry = new THREE.BoxGeometry(0.2, 0.2, 2.5);
+                const bossSwordMaterial = new THREE.MeshPhongMaterial({ color: 0xaaaaaa, shininess: 50 });
+                const bossSword = new THREE.Mesh(bossSwordGeometry, bossSwordMaterial);
+                bossSword.position.set(0.6, 0, 0.5);
+                enemyGroup.add(bossSword);
+                enemyGroup.sword = bossSword;
+                enemyGroup.attackCooldown = 0;
+                enemyGroup.summonCooldown = 0;
+                enemyGroup.shockwaveCooldown = 0;
             }
 
-            scene.add(enemy);
-            enemies.push(enemy);
+            if (type !== 'normal') {
+                const healthBarBg = new THREE.Mesh(
+                    new THREE.PlaneGeometry(size, 0.1),
+                    new THREE.MeshBasicMaterial({ color: 0x666666 })
+                );
+                const healthBar = new THREE.Mesh(
+                    new THREE.PlaneGeometry(size, 0.1),
+                    new THREE.MeshBasicMaterial({ color: 0xff0000 })
+                );
+                healthBarBg.position.set(0, size / 2 + 0.2, 0);
+                healthBar.position.set(0, size / 2 + 0.2, 0);
+                enemyGroup.add(healthBarBg, healthBar);
+                enemyGroup.healthBar = healthBar;
+                enemyGroup.healthBarBg = healthBarBg;
+            }
+
+            enemyGroup.hitsRemaining = hits;
+            enemyGroup.maxHits = hits;
+            enemyGroup.speed = speed;
+            enemyGroup.damage = damage;
+            enemyGroup.type = type;
+            enemyGroup.position.copy(portal.position);
+            enemyGroup.position.y = size / 2;
+            scene.add(enemyGroup);
+            enemies.push(enemyGroup);
         }
 
         function spawnAlly() {
@@ -266,6 +332,22 @@
             const ally = new THREE.Mesh(allyGeometry, allyMaterial);
             ally.position.copy(playerGroup.position);
             ally.timer = 7;
+
+            const healthBarBg = new THREE.Mesh(
+                new THREE.PlaneGeometry(0.8, 0.1),
+                new THREE.MeshBasicMaterial({ color: 0x666666 })
+            );
+            const healthBar = new THREE.Mesh(
+                new THREE.PlaneGeometry(0.8, 0.1),
+                new THREE.MeshBasicMaterial({ color: 0xff0000 })
+            );
+            healthBarBg.position.set(0, 0.5, 0);
+            healthBar.position.set(0, 0.5, 0);
+            ally.add(healthBarBg, healthBar);
+            ally.healthBar = healthBar;
+            ally.healthBarBg = healthBarBg;
+            ally.maxTimer = 7;
+
             scene.add(ally);
             allies.push(ally);
         }
@@ -386,13 +468,19 @@
                 const enemy = enemies[i];
                 if (playerGroup.position.distanceTo(enemy.position) < hitRange) {
                     enemy.hitsRemaining -= damage;
+                    if (enemy.healthBar) {
+                        enemy.healthBar.scale.x = enemy.hitsRemaining / enemy.maxHits;
+                        enemy.healthBar.position.x = -enemy.scale.x / 2 + (enemy.scale.x * enemy.healthBar.scale.x) / 2;
+                    }
                     if (enemy.hitsRemaining <= 0) {
                         scene.remove(enemy);
                         enemies.splice(i, 1);
                         playerStats.coins += Math.floor(Math.random() * 5) + 1;
                         playerStats.kills++;
-                        if (playerStats.kills % 50 === 0) spawnEnemy('boss');
-                        else if (playerStats.kills % 10 === 0) spawnEnemy('strong');
+                        if (wave >= 10 && playerStats.kills % 50 === 0) {
+                            createPortal('boss');
+                            spawnEnemy('boss');
+                        } else if (playerStats.kills % 10 === 0) spawnEnemy('strong');
                         updateUI();
                     }
                 }
@@ -411,11 +499,36 @@
             if (isPaused) return;
             enemies.forEach(enemy => {
                 const direction = playerGroup.position.clone().sub(enemy.position).normalize();
-                enemy.position.add(direction.multiplyScalar(0.03));
+                enemy.position.add(direction.multiplyScalar(enemy.speed));
                 
+                if (enemy.type === 'boss') {
+                    enemy.attackCooldown -= 0.016;
+                    enemy.summonCooldown -= 0.016;
+                    enemy.shockwaveCooldown -= 0.016;
+
+                    if (enemy.attackCooldown <= 0) {
+                        enemy.sword.rotation.x = Math.PI / 4;
+                        if (playerGroup.position.distanceTo(enemy.position) < 3) {
+                            playerStats.health -= enemy.damage;
+                        }
+                        enemy.attackCooldown = 0.5;
+                    }
+                    enemy.sword.rotation.x *= 0.9;
+
+                    if (enemy.summonCooldown <= 0) {
+                        for (let i = 0; i < 3; i++) spawnEnemy('minion', true);
+                        enemy.summonCooldown = 20;
+                    }
+
+                    if (enemy.shockwaveCooldown <= 0 && playerGroup.position.distanceTo(enemy.position) < 5) {
+                        playerStats.stunTimer = 2;
+                        enemy.shockwaveCooldown = 10;
+                    }
+                }
+
                 if (playerGroup.position.distanceTo(enemy.position) < 1) {
-                    playerStats.health -= Math.max(1 - (playerStats.armorTimer > 0 ? playerStats.armor * 0.2 : playerStats.armor * 0.1), 0.1);
-                    if (enemy.hitsRemaining > 1 && enemy.scale.x > 1.5) {
+                    playerStats.health -= Math.max(enemy.damage - (playerStats.armorTimer > 0 ? playerStats.armor * 0.2 : playerStats.armor * 0.1), 0.1);
+                    if (enemy.type === 'boss') {
                         playerStats.stunTimer = 2;
                     }
                     updateUI();
@@ -440,10 +553,14 @@
                     ally.position.add(direction.multiplyScalar(0.08));
                     if (nearestEnemy.dist < 1) {
                         let damage = 1;
-                        if (nearestEnemy.enemy.hitsRemaining > 1) { // Strong or Boss
+                        if (nearestEnemy.enemy.hitsRemaining > 1) {
                             damage = Math.min(nearestEnemy.enemy.hitsRemaining, Math.floor(nearestEnemy.enemy.hitsRemaining * 0.75));
                         }
                         nearestEnemy.enemy.hitsRemaining -= damage;
+                        if (nearestEnemy.enemy.healthBar) {
+                            nearestEnemy.enemy.healthBar.scale.x = nearestEnemy.enemy.hitsRemaining / nearestEnemy.enemy.maxHits;
+                            nearestEnemy.enemy.healthBar.position.x = -nearestEnemy.enemy.scale.x / 2 + (nearestEnemy.enemy.scale.x * nearestEnemy.enemy.healthBar.scale.x) / 2;
+                        }
                         if (nearestEnemy.enemy.hitsRemaining <= 0) {
                             scene.remove(nearestEnemy.enemy);
                             enemies = enemies.filter(e => e !== nearestEnemy.enemy);
@@ -451,6 +568,8 @@
                     }
                 }
                 ally.timer -= 0.016;
+                ally.healthBar.scale.x = ally.timer / ally.maxTimer;
+                ally.healthBar.position.x = -0.4 + (0.8 * ally.healthBar.scale.x) / 2;
                 if (ally.timer <= 0) {
                     scene.remove(ally);
                     allies.splice(index, 1);
@@ -475,9 +594,9 @@
                 playerStats.damage = 3;
                 sword.scale.set(1.5, 1.5, 1.5);
                 playerStats.coins -= 60;
-            } else if (type === 'ally' && playerStats.coins >= 10) {
+            } else if (type === 'ally' && playerStats.coins >= 30) {
                 spawnAlly();
-                playerStats.coins -= 10;
+                playerStats.coins -= 30;
             }
             updateUI();
         }
@@ -512,6 +631,7 @@
 
         function spawnWave() {
             enemiesToSpawn = wave * 5;
+            if (wave % 3 === 0) spawnEnemy('fast');
             waveTimer = 10;
             wave++;
         }
