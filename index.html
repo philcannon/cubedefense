@@ -11,6 +11,8 @@
             left: 10px;
             color: white;
             font-family: Arial, sans-serif;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 5px;
         }
         #shop {
             position: absolute;
@@ -35,6 +37,7 @@
             padding: 20px;
             color: white;
             display: none;
+            text-align: center;
         }
         #leaderboard {
             position: absolute;
@@ -44,6 +47,14 @@
             font-family: Arial, sans-serif;
             background: rgba(0, 0, 0, 0.7);
             padding: 10px;
+        }
+        #pauseButton {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 5px 10px;
+            cursor: pointer;
         }
     </style>
 </head>
@@ -71,6 +82,7 @@
         <h3>Top Scores</h3>
         <ol id="leaderboardList"></ol>
     </div>
+    <button id="pauseButton" onclick="togglePause()">Pause</button>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
     <script>
@@ -83,20 +95,51 @@
         // Player setup
         const playerGroup = new THREE.Group();
         const playerGeometry = new THREE.BoxGeometry(1, 1, 1);
-        const playerMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+        const playerMaterial = new THREE.MeshPhongMaterial({ 
+            color: 0x00ff00,
+            shininess: 100,
+            specular: 0xffffff
+        });
         const player = new THREE.Mesh(playerGeometry, playerMaterial);
         const swordGeometry = new THREE.BoxGeometry(0.2, 0.2, 2.5);
-        const swordMaterial = new THREE.MeshBasicMaterial({ color: 0xaaaaaa });
+        const swordMaterial = new THREE.MeshPhongMaterial({ 
+            color: 0xaaaaaa,
+            shininess: 50,
+            specular: 0xffffff
+        });
         const sword = new THREE.Mesh(swordGeometry, swordMaterial);
         sword.position.set(0.6, 0, 0.5);
         playerGroup.add(player, sword);
         scene.add(playerGroup);
-        camera.position.set(0, 10, 15);
-        camera.lookAt(playerGroup.position);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        directionalLight.position.set(0, 10, 10);
+        scene.add(directionalLight);
+
+        // Sky
+        scene.background = new THREE.Color(0x87ceeb); // Sky blue
+        const cloudGeometry = new THREE.SphereGeometry(2, 16, 16);
+        const cloudMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
+        for (let i = 0; i < 5; i++) {
+            const cloud = new THREE.Mesh(cloudGeometry, cloudMaterial);
+            cloud.position.set(
+                (Math.random() - 0.5) * 40,
+                15 + Math.random() * 5,
+                (Math.random() - 0.5) * 20
+            );
+            cloud.scale.set(1 + Math.random(), 0.5 + Math.random() * 0.5, 1 + Math.random());
+            scene.add(cloud);
+        }
 
         // Grass ground
         const groundGeometry = new THREE.PlaneGeometry(50, 30);
-        const groundMaterial = new THREE.MeshBasicMaterial({ color: 0x00cc00 }); // Green grass
+        const groundTexture = new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAABJUlEQVR4nO2USwrCMBCEJ1EQRMTu1u6+gbfoFbyA4M5O3iM4Ozu7u7s7OwWPh8nMzL/fzH4M4MwwjBOCcT4H3sDvgFvgJngL3mFZGZZlYRhWlmXhDHgJjoE34C14C96C9+Ad+AB+BR/BZ/BZfAYfw+fwBXwJX8NX8A18A9/AV/ANfAvfwvfwPXwP34MP4Af4EX4CH8Fn8AV8CV/Cl/AlfAvfwvfwPXwPP4Af4Ef4CX8Cn8AV8CV/Cl/AlfAvfwvfwPXwPP4Af4Ef4CX8Cn8AV8CV/Cl/AlfAvfwvfwPXwPP4Af4Ef4CX8Cn8AV8CV/Cl/AlfAvfwvfwPXwPP4Af4Ef4CX8Cn8AV8CV/Cl/AlfAvfwvfwPXwPP4Af4Ef4CX8Cn8AV8CV/Cl/AFHUnB8xK/qoAAAAASUVORK5CYII=');
+        groundTexture.wrapS = groundTexture.wrapT = THREE.RepeatWrapping;
+        groundTexture.repeat.set(10, 10);
+        const groundMaterial = new THREE.MeshPhongMaterial({ map: groundTexture, color: 0x00cc00 });
         const ground = new THREE.Mesh(groundGeometry, groundMaterial);
         ground.rotation.x = -Math.PI / 2;
         scene.add(ground);
@@ -131,7 +174,6 @@
         let waveTimer = 0;
         let enemiesToSpawn = 0;
 
-        // Load leaderboard
         let leaderboard = JSON.parse(localStorage.getItem('cubeDefenseLeaderboard')) || [];
         updateLeaderboardUI();
 
@@ -154,13 +196,14 @@
             armorBubbles.forEach(b => scene.remove(b));
             armorBubbles = [];
             createPortal();
-            createPortal(); // Start with 2 portals
+            createPortal();
             updateUI();
+            spawnWave();
         }
 
         function createPortal() {
             const portalGeometry = new THREE.CylinderGeometry(2, 2, 0.2, 32);
-            const portalMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+            const portalMaterial = new THREE.MeshPhongMaterial({ color: 0xff0000, shininess: 30 });
             const portal = new THREE.Mesh(portalGeometry, portalMaterial);
             portal.position.set(
                 (Math.random() - 0.5) * 45,
@@ -191,7 +234,11 @@
             }
 
             const enemyGeometry = new THREE.BoxGeometry(size, size, size);
-            const enemyMaterial = new THREE.MeshBasicMaterial({ color });
+            const enemyMaterial = new THREE.MeshPhongMaterial({ 
+                color,
+                shininess: 100,
+                specular: 0xffffff
+            });
             const enemy = new THREE.Mesh(enemyGeometry, enemyMaterial);
             enemy.hitsRemaining = hits;
             enemy.position.copy(portal.position);
@@ -199,7 +246,7 @@
 
             if (type === 'boss') {
                 const crownGeometry = new THREE.BoxGeometry(0.5, 0.3, 0.5);
-                const crownMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+                const crownMaterial = new THREE.MeshPhongMaterial({ color: 0xffff00, shininess: 50 });
                 const crown = new THREE.Mesh(crownGeometry, crownMaterial);
                 crown.position.y = size / 2 + 0.15;
                 enemy.add(crown);
@@ -211,10 +258,14 @@
 
         function spawnAlly() {
             const allyGeometry = new THREE.BoxGeometry(0.8, 0.8, 0.8);
-            const allyMaterial = new THREE.MeshBasicMaterial({ color: 0x0000ff });
+            const allyMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0x0000ff,
+                shininess: 100,
+                specular: 0xffffff
+            });
             const ally = new THREE.Mesh(allyGeometry, allyMaterial);
             ally.position.copy(playerGroup.position);
-            ally.timer = 7; // Lasts 7 seconds
+            ally.timer = 7;
             scene.add(ally);
             allies.push(ally);
         }
@@ -231,7 +282,12 @@
 
         function createArmorBubble() {
             const bubbleGeometry = new THREE.SphereGeometry(0.2, 8, 8);
-            const bubbleMaterial = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.5 });
+            const bubbleMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0x00ffff, 
+                transparent: true, 
+                opacity: 0.5,
+                shininess: 50
+            });
             const bubble = new THREE.Mesh(bubbleGeometry, bubbleMaterial);
             scene.add(bubble);
             armorBubbles.push(bubble);
@@ -264,6 +320,9 @@
         function updatePlayer() {
             if (isPaused || playerStats.stunTimer > 0) return;
 
+            camera.position.set(playerGroup.position.x, 10, playerGroup.position.z + 15);
+            camera.lookAt(playerGroup.position);
+
             let currentSpeed = playerStats.specialActive ? playerStats.baseSpeed * 2 : playerStats.speed;
             if (keys['ArrowUp']) playerGroup.position.z -= currentSpeed;
             if (keys['ArrowDown']) playerGroup.position.z += currentSpeed;
@@ -280,7 +339,6 @@
             }
             sword.rotation.x *= 0.9;
 
-            // Update timers
             playerStats.attackCooldown -= 0.016;
             playerStats.speedTimer = Math.max(0, playerStats.speedTimer - 0.016);
             playerStats.armorTimer = Math.max(0, playerStats.armorTimer - 0.016);
@@ -302,7 +360,6 @@
             playerStats.specialCooldown -= 0.016;
             playerStats.stunTimer = Math.max(0, playerStats.stunTimer - 0.016);
 
-            // Update trail particles
             for (let i = trailParticles.length - 1; i >= 0; i--) {
                 trailParticles[i].life -= 0.016;
                 trailParticles[i].mesh.scale.multiplyScalar(0.95);
@@ -312,7 +369,6 @@
                 }
             }
 
-            // Update armor bubbles
             armorBubbles.forEach((bubble, i) => {
                 bubble.position.copy(playerGroup.position);
                 bubble.position.y = 0.5 + Math.sin(Date.now() * 0.002 + i) * 0.5;
@@ -383,7 +439,11 @@
                     const direction = nearestEnemy.enemy.position.clone().sub(ally.position).normalize();
                     ally.position.add(direction.multiplyScalar(0.08));
                     if (nearestEnemy.dist < 1) {
-                        nearestEnemy.enemy.hitsRemaining--;
+                        let damage = 1;
+                        if (nearestEnemy.enemy.hitsRemaining > 1) { // Strong or Boss
+                            damage = Math.min(nearestEnemy.enemy.hitsRemaining, Math.floor(nearestEnemy.enemy.hitsRemaining * 0.75));
+                        }
+                        nearestEnemy.enemy.hitsRemaining -= damage;
                         if (nearestEnemy.enemy.hitsRemaining <= 0) {
                             scene.remove(nearestEnemy.enemy);
                             enemies = enemies.filter(e => e !== nearestEnemy.enemy);
@@ -451,8 +511,8 @@
         }
 
         function spawnWave() {
-            enemiesToSpawn = wave * 5; // 5 enemies per wave number
-            waveTimer = 10; // 10 seconds between waves
+            enemiesToSpawn = wave * 5;
+            waveTimer = 10;
             wave++;
         }
 
@@ -464,11 +524,10 @@
                 updateEnemies();
                 updateAllies();
 
-                // Wave system
                 if (enemiesToSpawn > 0 && spawnTimer <= 0 && portals.length > 0) {
                     spawnEnemy('normal');
                     enemiesToSpawn--;
-                    spawnTimer = 0.5; // Spawn delay between enemies
+                    spawnTimer = 0.5;
                 }
                 spawnTimer -= 0.016;
 
