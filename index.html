@@ -50,7 +50,7 @@
         }
         #pauseButton {
             position: absolute;
-            top: 80px;
+            top: 110px;
             left: 10px;
             padding: 5px 10px;
             cursor: pointer;
@@ -66,6 +66,18 @@
             background: #666666;
             height: 5px;
             top: -10px;
+        }
+        #levelDisplay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 48px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            display: none;
         }
     </style>
 </head>
@@ -94,6 +106,7 @@
         <ol id="leaderboardList"></ol>
     </div>
     <button id="pauseButton" onclick="togglePause()">Pause</button>
+    <div id="levelDisplay">Level 1</div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
     <script>
@@ -135,7 +148,7 @@
         const sunGeometry = new THREE.SphereGeometry(2, 32, 32);
         const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
         const sun = new THREE.Mesh(sunGeometry, sunMaterial);
-        sun.position.set(20, 20, -20);
+        sun.position.set(-20, 20, 20); // Top left
         scene.add(sun);
         for (let i = 0; i < 5; i++) {
             const cloudGeometry = new THREE.SphereGeometry(2, 16, 16);
@@ -150,12 +163,9 @@
             scene.add(cloud);
         }
 
-        // Forest green ground
+        // Light green ground
         const groundGeometry = new THREE.PlaneGeometry(50, 30);
-        const groundTexture = new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAABJUlEQVR4nO2USwrCMBCEJ1EQRMTu1u6+gbfoFbyA4M5O3iM4Ozu7u7s7OwWPh8nMzL/fzH4M4MwwjBOCcT4H3sDvgFvgJngL3mFZGZZlYRhWlmXhDHgJjoE34C14C96C9+Ad+AB+BR/BZ/BZfAYfw+fwBXwJX8NX8A18A9/AV/ANfAvfwvfwPXwP34MP4Af4EX4CH8Fn8AV8CV/Cl/AlfAvfwvfwPXwPP4Af4Ef4CX8Cn8AV8CV/Cl/AlfAvfwvfwPXwPP4Af4Ef4CX8Cn8AV8CV/Cl/AlfAvfwvfwPXwPP4Af4Ef4CX8Cn8AV8CV/Cl/AlfAvfwvfwPXwPP4Af4Ef4CX8Cn8AV8CV/Cl/AlfAvfwvfwPXwPP4Af4Ef4CX8Cn8AV8CV/Cl/AFHUnB8xK/qoAAAAASUVORK5CYII=');
-        groundTexture.wrapS = groundTexture.wrapT = THREE.RepeatWrapping;
-        groundTexture.repeat.set(10, 10);
-        const groundMaterial = new THREE.MeshPhongMaterial({ map: groundTexture, color: 0x228B22 }); // Forest green
+        const groundMaterial = new THREE.MeshPhongMaterial({ color: 0x90ee90 }); // Light green
         const ground = new THREE.Mesh(groundGeometry, groundMaterial);
         ground.rotation.x = -Math.PI / 2;
         scene.add(ground);
@@ -182,6 +192,7 @@
         let enemies = [];
         let portals = [];
         let allies = [];
+        let coins = [];
         let trailParticles = [];
         let armorBubbles = [];
         const keys = {};
@@ -192,6 +203,14 @@
 
         let leaderboard = JSON.parse(localStorage.getItem('cubeDefenseLeaderboard')) || [];
         updateLeaderboardUI();
+
+        function showLevelDisplay() {
+            const levelDisplay = document.getElementById('levelDisplay');
+            levelDisplay.style.display = 'block';
+            setTimeout(() => {
+                levelDisplay.style.display = 'none';
+            }, 2000);
+        }
 
         function resetGame() {
             saveScore(playerStats.kills);
@@ -207,6 +226,8 @@
             portals = [];
             allies.forEach(ally => scene.remove(ally));
             allies = [];
+            coins.forEach(coin => scene.remove(coin));
+            coins = [];
             trailParticles.forEach(p => scene.remove(p));
             trailParticles = [];
             armorBubbles.forEach(b => scene.remove(b));
@@ -215,6 +236,7 @@
             createPortal();
             updateUI();
             spawnWave();
+            showLevelDisplay();
         }
 
         function createPortal(type = 'normal') {
@@ -244,7 +266,7 @@
             if (type === 'strong') {
                 size = 1.5;
                 color = 0x0000ff;
-                hits = 10;
+                hits = 7; // Reduced from 10
                 speed = 0.03;
                 damage = 1;
             } else if (type === 'boss') {
@@ -293,6 +315,12 @@
                 enemyGroup.attackCooldown = 0;
                 enemyGroup.summonCooldown = 0;
                 enemyGroup.shockwaveCooldown = 0;
+
+                const crownGeometry = new THREE.BoxGeometry(0.5, 0.3, 0.5);
+                const crownMaterial = new THREE.MeshPhongMaterial({ color: 0xffff00, shininess: 50 });
+                const crown = new THREE.Mesh(crownGeometry, crownMaterial);
+                crown.position.y = size / 2 + 0.15;
+                enemyGroup.add(crown);
             }
 
             if (type !== 'normal') {
@@ -350,6 +378,17 @@
 
             scene.add(ally);
             allies.push(ally);
+        }
+
+        function spawnCoin(position) {
+            const coinGeometry = new THREE.CylinderGeometry(0.2, 0.2, 0.1, 16);
+            const coinMaterial = new THREE.MeshPhongMaterial({ color: 0xffff00, shininess: 50 });
+            const coin = new THREE.Mesh(coinGeometry, coinMaterial);
+            coin.position.copy(position);
+            coin.position.y = 0.05;
+            coin.value = Math.floor(Math.random() * 5) + 1;
+            scene.add(coin);
+            coins.push(coin);
         }
 
         function createTrailParticle() {
@@ -421,6 +460,17 @@
             }
             sword.rotation.x *= 0.9;
 
+            // Coin collection
+            for (let i = coins.length - 1; i >= 0; i--) {
+                const coin = coins[i];
+                if (playerGroup.position.distanceTo(coin.position) < 1) {
+                    playerStats.coins += coin.value;
+                    scene.remove(coin);
+                    coins.splice(i, 1);
+                    updateUI();
+                }
+            }
+
             playerStats.attackCooldown -= 0.016;
             playerStats.speedTimer = Math.max(0, playerStats.speedTimer - 0.016);
             playerStats.armorTimer = Math.max(0, playerStats.armorTimer - 0.016);
@@ -473,11 +523,11 @@
                         enemy.healthBar.position.x = -enemy.scale.x / 2 + (enemy.scale.x * enemy.healthBar.scale.x) / 2;
                     }
                     if (enemy.hitsRemaining <= 0) {
+                        spawnCoin(enemy.position);
                         scene.remove(enemy);
                         enemies.splice(i, 1);
-                        playerStats.coins += Math.floor(Math.random() * 5) + 1;
                         playerStats.kills++;
-                        if (wave >= 10 && playerStats.kills % 50 === 0) {
+                        if (wave >= 5 && playerStats.kills % 50 === 0) {
                             createPortal('boss');
                             spawnEnemy('boss');
                         } else if (playerStats.kills % 10 === 0) spawnEnemy('strong');
@@ -562,6 +612,7 @@
                             nearestEnemy.enemy.healthBar.position.x = -nearestEnemy.enemy.scale.x / 2 + (nearestEnemy.enemy.scale.x * nearestEnemy.enemy.healthBar.scale.x) / 2;
                         }
                         if (nearestEnemy.enemy.hitsRemaining <= 0) {
+                            spawnCoin(nearestEnemy.enemy.position);
                             scene.remove(nearestEnemy.enemy);
                             enemies = enemies.filter(e => e !== nearestEnemy.enemy);
                         }
@@ -631,9 +682,15 @@
 
         function spawnWave() {
             enemiesToSpawn = wave * 5;
-            if (wave % 3 === 0) spawnEnemy('fast');
+            if (wave % 2 === 0) spawnEnemy('fast'); // More frequent speedy cubes
+            if (wave === 5) {
+                createPortal('boss');
+                spawnEnemy('boss');
+            }
             waveTimer = 10;
             wave++;
+            document.getElementById('levelDisplay').textContent = `Level ${wave - 1}`;
+            showLevelDisplay();
         }
 
         let spawnTimer = 0;
