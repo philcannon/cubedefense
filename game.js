@@ -55,8 +55,7 @@ function initGame(usePCUI) {
     // Game State
     let playerStats = {
         health: 100, maxHealth: 100, coins: 0, kills: 0, baseSpeed: 0.15, speed: 0.15, damage: 1, armor: 0,
-        attackCooldown: 0, specialCooldown: 0, specialActive: false, specialTimer: 0, stunTimer: 0,
-        speedTimer: 0, armorTimer: 0, weaponTimer: 0, wave: 1, whiteCubeKills: 0
+        attackCooldown: 0, stunTimer: 0, speedTimer: 0, armorTimer: 0, weaponTimer: 0, wave: 1, whiteCubeKills: 0
     };
     let enemies = [];
     let portals = [];
@@ -76,12 +75,13 @@ function initGame(usePCUI) {
     // UI Setup
     const shopContainer = document.getElementById('shop');
     const upgrades = [
-        { type: 'armor', cost: 50, text: 'Armor (50 coins)' },
-        { type: 'health', cost: 30, text: 'Health (30 coins)' },
-        { type: 'speed', cost: 40, text: 'Speed (40 coins)' },
-        { type: 'weapon', cost: 60, text: 'Weapon (60 coins)' },
-        { type: 'ally', cost: 30, text: 'Ally Cube (30 coins)' }
+        { type: 'armor', cost: 50, text: 'Armor (50 coins) [Q]' },
+        { type: 'health', cost: 30, text: 'Health (30 coins) [W]' },
+        { type: 'speed', cost: 40, text: 'Speed (40 coins) [E]' },
+        { type: 'weapon', cost: 60, text: 'Weapon (60 coins) [R]' },
+        { type: 'ally', cost: 30, text: 'Ally Cube (30 coins) [T]' }
     ];
+    const hotkeys = ['q', 'w', 'e', 'r', 't'];
 
     if (usePCUI) {
         const shopTitle = new pcui.Label({ text: 'Shop' });
@@ -115,6 +115,17 @@ function initGame(usePCUI) {
         restartWaveButton.onclick = restartWave;
         document.getElementById('restartWaveButton').appendChild(restartWaveButton);
     }
+
+    // Hotkey Listener for Shop
+    document.addEventListener('keydown', (e) => {
+        keys[e.key] = true;
+        if (e.key === 'Escape') togglePause();
+        const hotkeyIndex = hotkeys.indexOf(e.key.toLowerCase());
+        if (hotkeyIndex !== -1) {
+            buyUpgrade(upgrades[hotkeyIndex].type);
+        }
+    });
+    document.addEventListener('keyup', (e) => keys[e.key] = false);
 
     // Functions
     function showLevelDisplay() {
@@ -159,7 +170,7 @@ function initGame(usePCUI) {
         enemies.forEach(enemy => scene.remove(enemy));
         enemies = [];
         enemiesToSpawn = 0;
-        waveTimer = 0; // Trigger immediate wave spawn
+        waveTimer = 0;
         spawnWave();
     }
 
@@ -316,13 +327,6 @@ function initGame(usePCUI) {
         armorBubbles.push(bubble);
     }
 
-    document.addEventListener('keydown', (e) => {
-        keys[e.key] = true;
-        if (e.key === 'Escape') togglePause();
-        if (e.key === 'q' && playerStats.specialCooldown <= 0) activateSpecial();
-    });
-    document.addEventListener('keyup', (e) => keys[e.key] = false);
-
     function togglePause() {
         isPaused = !isPaused;
         document.getElementById('pauseMenu').style.display = isPaused ? 'block' : 'none';
@@ -333,18 +337,11 @@ function initGame(usePCUI) {
         document.getElementById('pauseMenu').style.display = 'none';
     };
 
-    function activateSpecial() {
-        playerStats.specialActive = true;
-        playerStats.specialTimer = 4;
-        playerStats.specialCooldown = 20;
-        updateUI();
-    }
-
     function updatePlayer() {
         if (isPaused || playerStats.stunTimer > 0) return;
         camera.position.set(playerGroup.position.x, 10, playerGroup.position.z + 15);
         camera.lookAt(playerGroup.position);
-        let currentSpeed = playerStats.specialActive ? playerStats.baseSpeed * 2 : playerStats.speed;
+        let currentSpeed = playerStats.speedTimer > 0 ? playerStats.baseSpeed * 2 : playerStats.speed; // Adjusted for no special
         if (keys['ArrowUp']) playerGroup.position.z -= currentSpeed;
         if (keys['ArrowDown']) playerGroup.position.z += currentSpeed;
         if (keys['ArrowLeft']) playerGroup.position.x -= currentSpeed;
@@ -369,21 +366,11 @@ function initGame(usePCUI) {
         playerStats.speedTimer = Math.max(0, playerStats.speedTimer - 0.016);
         playerStats.armorTimer = Math.max(0, playerStats.armorTimer - 0.016);
         playerStats.weaponTimer = Math.max(0, playerStats.weaponTimer - 0.016);
-        if (playerStats.speedTimer > 0) {
-            playerStats.speed = playerStats.baseSpeed * 2;
-            if (Math.random() < 0.3) createTrailParticle();
-        } else {
-            playerStats.speed = playerStats.baseSpeed;
-        }
+        if (playerStats.speedTimer > 0 && Math.random() < 0.3) createTrailParticle();
         if (playerStats.armorTimer <= 0 && armorBubbles.length > 0) {
             armorBubbles.forEach(b => scene.remove(b));
             armorBubbles = [];
         }
-        if (playerStats.specialActive) {
-            playerStats.specialTimer -= 0.016;
-            if (playerStats.specialTimer <= 0) playerStats.specialActive = false;
-        }
-        playerStats.specialCooldown -= 0.016;
         playerStats.stunTimer = Math.max(0, playerStats.stunTimer - 0.016);
         for (let i = trailParticles.length - 1; i >= 0; i--) {
             trailParticles[i].life -= 0.016;
@@ -403,7 +390,7 @@ function initGame(usePCUI) {
     }
 
     function attack() {
-        const damage = playerStats.specialActive ? playerStats.damage * 2 : playerStats.damage;
+        const damage = playerStats.damage; // No special multiplier
         const hitRange = playerStats.weaponTimer > 0 ? 4 : 3;
         for (let i = enemies.length - 1; i >= 0; i--) {
             const enemy = enemies[i];
@@ -431,14 +418,6 @@ function initGame(usePCUI) {
                 }
             }
         }
-        if (playerStats.specialActive) {
-            for (let i = portals.length - 1; i >= 0; i--) {
-                if (playerGroup.position.distanceTo(portals[i].position) < 3) {
-                    scene.remove(portals[i]);
-                    portals.splice(i, 1);
-                }
-            }
-        }
     }
 
     function updateEnemies() {
@@ -461,10 +440,8 @@ function initGame(usePCUI) {
                         direction = goldenPortal.position.clone().sub(enemy.position).normalize();
                     }
                 }
-                // Allow golden cube to move through red portals
                 portals.forEach(portal => {
                     if (portal.type === 'normal' && enemy.position.distanceTo(portal.position) < 2) {
-                        // Skip collision with red portals
                         return;
                     }
                 });
@@ -473,7 +450,6 @@ function initGame(usePCUI) {
             }
             enemy.position.add(direction.multiplyScalar(enemy.speed));
 
-            // Keep baby cube on battlefield
             if (enemy.type === 'baby') {
                 enemy.position.x = Math.max(-24, Math.min(24, enemy.position.x));
                 enemy.position.z = Math.max(-14, Math.min(14, enemy.position.z));
@@ -619,9 +595,6 @@ function initGame(usePCUI) {
         document.getElementById('coins').textContent = playerStats.coins;
         document.getElementById('kills').textContent = playerStats.kills;
         document.getElementById('wave').textContent = playerStats.wave;
-        document.getElementById('special').textContent = 
-            playerStats.specialActive ? `Active (${Math.ceil(playerStats.specialTimer)}s)` :
-            playerStats.specialCooldown > 0 ? `Cooldown (${Math.ceil(playerStats.specialCooldown)}s)` : 'Ready (Q)';
     }
 
     function saveScore(score) {
