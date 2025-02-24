@@ -25,7 +25,7 @@ function initGame(usePCUI) {
     sword.position.set(0.6, 0, 0.5);
     playerGroup.add(player, sword);
     scene.add(playerGroup);
-    playerGroup.position.set(0, 0.5, 0); // Ensure player starts at origin
+    playerGroup.position.set(0, 0.5, 0);
 
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
     scene.add(ambientLight);
@@ -33,7 +33,7 @@ function initGame(usePCUI) {
     directionalLight.position.set(0, 10, 10);
     scene.add(directionalLight);
 
-    scene.background = new THREE.Color(0x87ceeb); // Default day sky
+    scene.background = new THREE.Color(0x87ceeb);
     const sunGeometry = new THREE.SphereGeometry(2, 32, 32);
     const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
     const sun = new THREE.Mesh(sunGeometry, sunMaterial);
@@ -73,13 +73,12 @@ function initGame(usePCUI) {
     let waveTimer = 0;
     let enemiesToSpawn = 0;
     let goldenCubeExists = false;
-    let dayNightCycle = 0; // 0-1 range, 0 = day, 1 = night
+    let dayNightCycle = 0;
     let leaderboard = JSON.parse(localStorage.getItem('cubeDefenseLeaderboard')) || [];
     let achievements = JSON.parse(localStorage.getItem('cubeDefenseAchievements')) || {
         goldenSlayer: false, waveMaster: false
     };
     let hardMode = false;
-    let userInteracted = false; // Track user interaction for audio
     updateLeaderboardUI();
     updateAchievementUI();
 
@@ -131,16 +130,17 @@ function initGame(usePCUI) {
         document.getElementById('restartWaveButton').appendChild(restartWaveButton);
     }
 
-    // Audio Setup
+    // Audio Setup - Disabled for now due to source errors
+    /*
     const attackSound = document.getElementById('attackSound');
     const deathSound = document.getElementById('deathSound');
     const coinSound = document.getElementById('coinSound');
     const waveSound = document.getElementById('waveSound');
+    */
 
     // Hotkey Listener
     document.addEventListener('keydown', (e) => {
         keys[e.key] = true;
-        userInteracted = true; // Mark interaction for audio
         if (e.key === 'Escape') togglePause();
         const hotkeyIndex = hotkeys.indexOf(e.key.toLowerCase());
         if (hotkeyIndex !== -1) buyUpgrade(upgrades[hotkeyIndex].type);
@@ -239,20 +239,15 @@ function initGame(usePCUI) {
         else if (type === 'wizardKing') { size = 2; color = 0x4b0082; hits = 30; speed = 0.03; damage = 2; }
         else { size = 1; color = 0xff0000; hits = 1; speed = 0.03; damage = 1; }
 
-        // Apply difficulty scaling
         if (playerStats.wave > 10) hits *= (1 + (playerStats.wave - 10) * 0.05);
-        if (hardMode) {
-            hits *= 2;
-            speed *= 1.2;
-            damage *= 2;
-        }
-        if (dayNightCycle > 0.5) speed *= 1.1; // Faster at night
+        if (hardMode) { hits *= 2; speed *= 1.2; damage *= 2; }
+        if (dayNightCycle > 0.5) speed *= 1.1;
 
         const enemyGroup = new THREE.Group();
         const enemyGeometry = new THREE.BoxGeometry(size, size, size);
         const enemyMaterial = new THREE.MeshPhongMaterial({ color, shininess: 100, specular: 0xffffff, transparent: stealth, opacity: stealth ? 0.2 : 1 });
-        const enemy = new THREE.Mesh(enemyGeometry, enemyMaterial);
-        enemyGroup.add(enemy);
+        const enemyMesh = new THREE.Mesh(enemyGeometry, enemyMaterial);
+        enemyGroup.add(enemyMesh);
 
         if (type === 'boss') {
             const bossSword = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 2.5), new THREE.MeshPhongMaterial({ color: 0xaaaaaa, shininess: 50 }));
@@ -339,10 +334,6 @@ function initGame(usePCUI) {
         coin.value = Math.floor(Math.random() * 5) + 1 * (hardMode ? 1.5 : 1);
         scene.add(coin);
         coins.push(coin);
-        if (userInteracted && coinSound) {
-            coinSound.currentTime = 0;
-            coinSound.play();
-        }
         if (!goldenCubeExists && Math.random() < 0.05) spawnEnemy('golden');
     }
 
@@ -384,7 +375,7 @@ function initGame(usePCUI) {
         const trap = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.1, 16), new THREE.MeshPhongMaterial({ color: 0x808080, shininess: 50 }));
         trap.position.copy(position);
         trap.position.y = 0.05;
-        trap.timer = 10; // Trap lasts 10 seconds
+        trap.timer = 10;
         scene.add(trap);
         traps.push(trap);
     }
@@ -404,7 +395,6 @@ function initGame(usePCUI) {
     function updatePlayer() {
         if (isPaused || playerStats.stunTimer > 0) return;
 
-        // Camera follows player
         camera.position.set(playerGroup.position.x, 10, playerGroup.position.z + 15);
         camera.lookAt(playerGroup.position);
 
@@ -419,10 +409,6 @@ function initGame(usePCUI) {
             attack();
             playerStats.attackCooldown = 0.5;
             sword.rotation.x = Math.PI / 4;
-            if (userInteracted && attackSound) {
-                attackSound.currentTime = 0;
-                attackSound.play();
-            }
         }
         sword.rotation.x *= 0.9;
 
@@ -446,12 +432,11 @@ function initGame(usePCUI) {
         }
         playerStats.stunTimer = Math.max(0, playerStats.stunTimer - 0.016);
 
-        // Health Regen
         if (playerStats.regenTimer > 0) {
             playerStats.regenTimer -= 0.016;
             if (playerStats.regenTimer <= 0) {
                 playerStats.health = Math.min(playerStats.maxHealth, playerStats.health + 5);
-                playerStats.regenTimer = 10; // Regen every 10 seconds
+                playerStats.regenTimer = 10;
                 updateUI();
             }
         }
@@ -481,6 +466,7 @@ function initGame(usePCUI) {
         const hitRange = playerStats.weaponTimer > 0 ? 4 : 3;
         for (let i = enemies.length - 1; i >= 0; i--) {
             const enemy = enemies[i];
+            if (!enemy || !enemy.children[0]) continue; // Skip invalid enemies
             if (playerGroup.position.distanceTo(enemy.position) < hitRange) {
                 enemy.hitsRemaining -= damage;
                 if (enemy.healthBar) {
@@ -490,10 +476,6 @@ function initGame(usePCUI) {
                 if (enemy.hitsRemaining <= 0) {
                     spawnCoin(enemy.position);
                     createDeathParticles(enemy.position, enemy.children[0].material.color.getHex());
-                    if (userInteracted && deathSound) {
-                        deathSound.currentTime = 0;
-                        deathSound.play();
-                    }
                     scene.remove(enemy);
                     if (enemy.type === 'golden') {
                         goldenCubeExists = false;
@@ -502,8 +484,8 @@ function initGame(usePCUI) {
                     }
                     if (enemy.explosive) {
                         for (let j = enemies.length - 1; j >= 0; j--) {
-                            if (enemies[j] !== enemy && enemy.position.distanceTo(enemies[j].position) < 3) {
-                                enemies[j].hitsRemaining -= 5; // Explosion damage
+                            if (enemies[j] !== enemy && enemies[j].children[0] && enemy.position.distanceTo(enemies[j].position) < 3) {
+                                enemies[j].hitsRemaining -= 5;
                                 if (enemies[j].hitsRemaining <= 0) {
                                     spawnCoin(enemies[j].position);
                                     createDeathParticles(enemies[j].position, enemies[j].children[0].material.color.getHex());
@@ -536,7 +518,12 @@ function initGame(usePCUI) {
 
     function updateEnemies() {
         if (isPaused) return;
-        enemies.forEach((enemy, index) => {
+        for (let i = enemies.length - 1; i >= 0; i--) {
+            const enemy = enemies[i];
+            if (!enemy || !enemy.children[0]) {
+                enemies.splice(i, 1);
+                continue;
+            }
             let direction;
             if (enemy.type === 'golden') {
                 direction = new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5).normalize();
@@ -546,10 +533,11 @@ function initGame(usePCUI) {
                 if (goldenPortal && enemy.timer <= 0) {
                     if (enemy.position.distanceTo(goldenPortal.position) < 1) {
                         scene.remove(enemy);
-                        enemies.splice(index, 1);
+                        enemies.splice(i, 1);
                         scene.remove(goldenPortal);
                         portals = portals.filter(p => p !== goldenPortal);
                         goldenCubeExists = false;
+                        continue;
                     } else {
                         direction = goldenPortal.position.clone().sub(enemy.position).normalize();
                     }
@@ -567,7 +555,6 @@ function initGame(usePCUI) {
                 enemy.position.z = Math.max(-14, Math.min(14, enemy.position.z));
             }
 
-            // Stealth check - ensure enemy has a mesh child
             if (enemy.stealth && enemy.children[0]) {
                 if (!playerStats.hasRadar && playerGroup.position.distanceTo(enemy.position) > 5) {
                     enemy.children[0].material.opacity = 0.2;
@@ -578,8 +565,8 @@ function initGame(usePCUI) {
 
             traps.forEach(trap => {
                 if (enemy.position.distanceTo(trap.position) < 1) {
-                    enemy.speed *= 0.5; // Slowed by trap
-                    enemy.hitsRemaining -= 0.016; // Small damage over time
+                    enemy.speed *= 0.5;
+                    enemy.hitsRemaining -= 0.016;
                 }
             });
 
@@ -594,7 +581,7 @@ function initGame(usePCUI) {
                 }
                 enemy.sword.rotation.x *= 0.9;
                 if (enemy.summonCooldown <= 0) {
-                    for (let i = 0; i < 3; i++) spawnEnemy('minion', true);
+                    for (let j = 0; j < 3; j++) spawnEnemy('minion', true);
                     enemy.summonCooldown = 20;
                 }
                 if (enemy.shockwaveCooldown <= 0 && playerGroup.position.distanceTo(enemy.position) < 5) {
@@ -621,7 +608,7 @@ function initGame(usePCUI) {
                     enemy.attackCooldown = 1;
                 }
                 if (enemy.type === 'wizardKing' && enemy.summonCooldown <= 0) {
-                    for (let i = 0; i < 5; i++) {
+                    for (let j = 0; j < 5; j++) {
                         const projDirection = new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5).normalize();
                         spawnProjectile(enemy.position, projDirection);
                     }
@@ -638,7 +625,7 @@ function initGame(usePCUI) {
                     resetGame();
                 }
             }
-        });
+        }
         for (let i = portals.length - 1; i >= 0; i--) {
             if (portals[i].type === 'boss' && portals[i].timer) {
                 portals[i].timer -= 0.016;
@@ -672,12 +659,13 @@ function initGame(usePCUI) {
 
     function updateAllies() {
         if (isPaused) return;
-        allies.forEach((ally, index) => {
+        for (let i = allies.length - 1; i >= 0; i--) {
+            const ally = allies[i];
             const nearestEnemy = enemies.reduce((closest, enemy) => {
                 const dist = ally.position.distanceTo(enemy.position);
                 return dist < closest.dist ? { enemy, dist } : closest;
             }, { enemy: null, dist: Infinity });
-            if (nearestEnemy.enemy) {
+            if (nearestEnemy.enemy && nearestEnemy.enemy.children[0]) {
                 const direction = nearestEnemy.enemy.position.clone().sub(ally.position).normalize();
                 ally.position.add(direction.multiplyScalar(0.08));
                 ally.attackCooldown -= 0.016;
@@ -690,11 +678,6 @@ function initGame(usePCUI) {
                     if (nearestEnemy.enemy.hitsRemaining <= 0) {
                         spawnCoin(nearestEnemy.enemy.position);
                         createDeathParticles(nearestEnemy.enemy.position, nearestEnemy.enemy.children[0].material.color.getHex());
-                        if (nearestEnemy.enemy.type === 'golden') {
-                            goldenCubeExists = false;
-                            playerStats.goldenCubeKills++;
-                            checkAchievements();
-                        }
                         scene.remove(nearestEnemy.enemy);
                         enemies = enemies.filter(e => e !== nearestEnemy.enemy);
                     }
@@ -706,9 +689,9 @@ function initGame(usePCUI) {
             ally.healthBar.position.x = -0.4 + (0.8 * ally.healthBar.scale.x) / 2;
             if (ally.timer <= 0) {
                 scene.remove(ally);
-                allies.splice(index, 1);
+                allies.splice(i, 1);
             }
-        });
+        }
     }
 
     function buyUpgrade(type) {
@@ -822,10 +805,6 @@ function initGame(usePCUI) {
         if (playerStats.wave > 7 && Math.random() < 0.15) spawnEnemy('explosive');
         waveTimer = 10;
         playerStats.wave++;
-        if (userInteracted && waveSound) {
-            waveSound.currentTime = 0;
-            waveSound.play();
-        }
         document.getElementById('levelDisplay').textContent = `Level ${playerStats.wave - 1}`;
         showLevelDisplay();
         checkAchievements();
@@ -839,10 +818,9 @@ function initGame(usePCUI) {
             updateEnemies();
             updateAllies();
 
-            // Day/Night Cycle
-            dayNightCycle = (dayNightCycle + 0.0005) % 1; // 33-minute cycle (2000 frames at 60 FPS)
+            dayNightCycle = (dayNightCycle + 0.0005) % 1;
             scene.background = new THREE.Color().lerpColors(new THREE.Color(0x87ceeb), new THREE.Color(0x191970), dayNightCycle);
-            ambientLight.intensity = 0.5 - dayNightCycle * 0.3; // Dimmer at night
+            ambientLight.intensity = 0.5 - dayNightCycle * 0.3;
 
             if (enemiesToSpawn > 0 && spawnTimer <= 0 && portals.length > 0) {
                 spawnEnemy('normal');
@@ -862,7 +840,6 @@ function initGame(usePCUI) {
         renderer.render(scene, camera);
     }
 
-    // Start Game
     createPortal();
     createPortal();
     spawnWave();
