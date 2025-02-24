@@ -1,4 +1,3 @@
-/* styles.css */
 body {
     margin: 0;
     overflow: hidden;
@@ -15,4 +14,46 @@ canvas {
     background: rgba(0, 0, 0, 0.5);
     padding: 5px;
 }
-/* ... Include the rest of the CSS ... */
+#shop {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    color: white;
+}
+#pauseMenu {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.8);
+    padding: 20px;
+    color: white;
+    display: none;
+    text-align: center;
+}
+#leaderboard {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    color: white;
+    font-family: Arial, sans-serif;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 10px;
+}
+#pauseButton {
+    position: absolute;
+    top: 110px;
+    left: 10px;
+}
+#levelDisplay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-family: Arial, sans-serif;
+    font-size: 48px;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 20px;
+    display: none;
+}
