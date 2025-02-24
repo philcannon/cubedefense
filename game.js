@@ -148,9 +148,11 @@ function initGame(usePCUI) {
     // Functions
     function showLevelDisplay() {
         const levelDisplay = document.getElementById('levelDisplay');
-        levelDisplay.style.display = 'block';
-        const duration = playerStats.wave === 1 ? 2000 : 1000;
-        setTimeout(() => levelDisplay.style.display = 'none', duration);
+        if (levelDisplay) {
+            levelDisplay.style.display = 'block';
+            const duration = playerStats.wave === 1 ? 2000 : 1000;
+            setTimeout(() => levelDisplay.style.display = 'none', duration);
+        }
     }
 
     function resetGame() {
@@ -335,8 +337,10 @@ function initGame(usePCUI) {
         coin.value = Math.floor(Math.random() * 5) + 1 * (hardMode ? 1.5 : 1);
         scene.add(coin);
         coins.push(coin);
-        coinSound.currentTime = 0;
-        coinSound.play();
+        if (coinSound) {
+            coinSound.currentTime = 0;
+            coinSound.play();
+        }
         if (!goldenCubeExists && Math.random() < 0.05) spawnEnemy('golden');
     }
 
@@ -385,12 +389,14 @@ function initGame(usePCUI) {
 
     function togglePause() {
         isPaused = !isPaused;
-        document.getElementById('pauseMenu').style.display = isPaused ? 'block' : 'none';
+        const pauseMenu = document.getElementById('pauseMenu');
+        if (pauseMenu) pauseMenu.style.display = isPaused ? 'block' : 'none';
     }
 
     window.resumeGame = function() {
         isPaused = false;
-        document.getElementById('pauseMenu').style.display = 'none';
+        const pauseMenu = document.getElementById('pauseMenu');
+        if (pauseMenu) pauseMenu.style.display = 'none';
     };
 
     function updatePlayer() {
@@ -411,8 +417,10 @@ function initGame(usePCUI) {
             attack();
             playerStats.attackCooldown = 0.5;
             sword.rotation.x = Math.PI / 4;
-            attackSound.currentTime = 0;
-            attackSound.play();
+            if (attackSound) {
+                attackSound.currentTime = 0;
+                attackSound.play();
+            }
         }
         sword.rotation.x *= 0.9;
 
@@ -480,8 +488,10 @@ function initGame(usePCUI) {
                 if (enemy.hitsRemaining <= 0) {
                     spawnCoin(enemy.position);
                     createDeathParticles(enemy.position, enemy.material.color.getHex());
-                    deathSound.currentTime = 0;
-                    deathSound.play();
+                    if (deathSound) {
+                        deathSound.currentTime = 0;
+                        deathSound.play();
+                    }
                     scene.remove(enemy);
                     if (enemy.type === 'golden') {
                         goldenCubeExists = false;
@@ -732,10 +742,15 @@ function initGame(usePCUI) {
     }
 
     function updateUI() {
-        document.getElementById('health').textContent = Math.floor(playerStats.health);
-        document.getElementById('coins').textContent = playerStats.coins;
-        document.getElementById('kills').textContent = playerStats.kills;
-        document.getElementById('wave').textContent = playerStats.wave;
+        const healthElement = document.getElementById('health');
+        const coinsElement = document.getElementById('coins');
+        const killsElement = document.getElementById('kills');
+        const waveElement = document.getElementById('wave');
+
+        if (healthElement) healthElement.textContent = Math.floor(playerStats.health);
+        if (coinsElement) coinsElement.textContent = playerStats.coins;
+        if (killsElement) killsElement.textContent = playerStats.kills;
+        if (waveElement) waveElement.textContent = playerStats.wave;
     }
 
     function saveScore(score) {
@@ -748,12 +763,14 @@ function initGame(usePCUI) {
 
     function updateLeaderboardUI() {
         const list = document.getElementById('leaderboardList');
-        list.innerHTML = '';
-        leaderboard.forEach(score => {
-            const li = document.createElement('li');
-            li.textContent = score;
-            list.appendChild(li);
-        });
+        if (list) {
+            list.innerHTML = '';
+            leaderboard.forEach(score => {
+                const li = document.createElement('li');
+                li.textContent = score;
+                list.appendChild(li);
+            });
+        }
     }
 
     function checkAchievements() {
@@ -771,16 +788,18 @@ function initGame(usePCUI) {
 
     function updateAchievementUI() {
         const list = document.getElementById('achievementList');
-        list.innerHTML = '';
-        if (achievements.goldenSlayer) {
-            const li = document.createElement('li');
-            li.textContent = 'Golden Slayer (10 Golden Kills)';
-            list.appendChild(li);
-        }
-        if (achievements.waveMaster) {
-            const li = document.createElement('li');
-            li.textContent = 'Wave Master (Wave 20)';
-            list.appendChild(li);
+        if (list) {
+            list.innerHTML = '';
+            if (achievements.goldenSlayer) {
+                const li = document.createElement('li');
+                li.textContent = 'Golden Slayer (10 Golden Kills)';
+                list.appendChild(li);
+            }
+            if (achievements.waveMaster) {
+                const li = document.createElement('li');
+                li.textContent = 'Wave Master (Wave 20)';
+                list.appendChild(li);
+            }
         }
     }
 
@@ -798,8 +817,10 @@ function initGame(usePCUI) {
         if (playerStats.wave > 7 && Math.random() < 0.15) spawnEnemy('explosive');
         waveTimer = 10;
         playerStats.wave++;
-        waveSound.currentTime = 0;
-        waveSound.play();
+        if (waveSound) {
+            waveSound.currentTime = 0;
+            waveSound.play();
+        }
         document.getElementById('levelDisplay').textContent = `Level ${playerStats.wave - 1}`;
         showLevelDisplay();
         checkAchievements();
