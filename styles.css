@@ -45,6 +45,11 @@ canvas {
     top: 110px;
     left: 10px;
 }
+#restartWaveButton {
+    position: absolute;
+    top: 150px; /* Positioned below pause button */
+    left: 10px;
+}
 #levelDisplay {
     position: absolute;
     top: 50%;
