@@ -42,12 +42,12 @@ canvas {
 }
 #pauseButton {
     position: absolute;
-    top: 110px;
+    top: 130px; /* Increased from 110px for more spacing */
     left: 10px;
 }
 #restartWaveButton {
     position: absolute;
-    top: 150px; /* Positioned below pause button */
+    top: 170px; /* Adjusted from 150px to maintain spacing */
     left: 10px;
 }
 #levelDisplay {
