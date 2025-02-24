@@ -95,6 +95,9 @@ function initGame(usePCUI) {
         const pauseButton = new pcui.Button({ text: 'Pause' });
         pauseButton.on('click', togglePause);
         document.getElementById('pauseButton').appendChild(pauseButton.dom);
+        const restartWaveButton = new pcui.Button({ text: 'Restart Wave' });
+        restartWaveButton.on('click', restartWave);
+        document.getElementById('restartWaveButton').appendChild(restartWaveButton.dom);
     } else {
         shopContainer.innerHTML = '<h3>Shop</h3>';
         upgrades.forEach(upgrade => {
@@ -107,6 +110,10 @@ function initGame(usePCUI) {
         pauseButton.textContent = 'Pause';
         pauseButton.onclick = togglePause;
         document.getElementById('pauseButton').appendChild(pauseButton);
+        const restartWaveButton = document.createElement('button');
+        restartWaveButton.textContent = 'Restart Wave';
+        restartWaveButton.onclick = restartWave;
+        document.getElementById('restartWaveButton').appendChild(restartWaveButton);
     }
 
     // Functions
@@ -148,6 +155,14 @@ function initGame(usePCUI) {
         showLevelDisplay();
     }
 
+    function restartWave() {
+        enemies.forEach(enemy => scene.remove(enemy));
+        enemies = [];
+        enemiesToSpawn = 0;
+        waveTimer = 0; // Trigger immediate wave spawn
+        spawnWave();
+    }
+
     function createPortal(type = 'normal') {
         const portalGeometry = new THREE.CylinderGeometry(2, 2, 0.2, 32);
         const portalMaterial = new THREE.MeshPhongMaterial({ 
@@ -164,8 +179,8 @@ function initGame(usePCUI) {
     function spawnEnemy(type = 'normal', fromBoss = false) {
         let portal;
         if (type === 'boss') {
-            portal = portals.find(p => p.type === 'boss'); // Boss only spawns from purple portal
-            if (!portal) return; // No boss portal available
+            portal = portals.find(p => p.type === 'boss');
+            if (!portal) return;
         } else {
             portal = fromBoss ? 
                 portals.find(p => p.type === 'boss') || portals[Math.floor(Math.random() * portals.length)] :
@@ -254,7 +269,7 @@ function initGame(usePCUI) {
         const ally = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), new THREE.MeshPhongMaterial({ color: 0x0000ff, shininess: 100, specular: 0xffffff }));
         ally.position.copy(playerGroup.position);
         ally.timer = 7;
-        ally.attackCooldown = 0; // Add cooldown for ally attacks
+        ally.attackCooldown = 0;
         const healthBarBg = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.1), new THREE.MeshBasicMaterial({ color: 0x666666 }));
         const healthBar = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.1), new THREE.MeshBasicMaterial({ color: 0xff0000 }));
         healthBarBg.position.set(0, 0.5, 0);
@@ -446,10 +461,24 @@ function initGame(usePCUI) {
                         direction = goldenPortal.position.clone().sub(enemy.position).normalize();
                     }
                 }
+                // Allow golden cube to move through red portals
+                portals.forEach(portal => {
+                    if (portal.type === 'normal' && enemy.position.distanceTo(portal.position) < 2) {
+                        // Skip collision with red portals
+                        return;
+                    }
+                });
             } else {
-                direction = playerGroup.position.clone().sub(enemy.position).normalize(); // Baby cubes now move toward player
+                direction = playerGroup.position.clone().sub(enemy.position).normalize();
             }
             enemy.position.add(direction.multiplyScalar(enemy.speed));
+
+            // Keep baby cube on battlefield
+            if (enemy.type === 'baby') {
+                enemy.position.x = Math.max(-24, Math.min(24, enemy.position.x));
+                enemy.position.z = Math.max(-14, Math.min(14, enemy.position.z));
+            }
+
             if (enemy.type === 'boss') {
                 enemy.attackCooldown -= 0.016;
                 enemy.summonCooldown -= 0.016;
@@ -537,7 +566,7 @@ function initGame(usePCUI) {
                 ally.position.add(direction.multiplyScalar(0.08));
                 ally.attackCooldown -= 0.016;
                 if (nearestEnemy.dist < 1 && ally.attackCooldown <= 0) {
-                    nearestEnemy.enemy.hitsRemaining -= 2; // Ally does exactly 2 damage
+                    nearestEnemy.enemy.hitsRemaining -= 2;
                     if (nearestEnemy.enemy.healthBar) {
                         nearestEnemy.enemy.healthBar.scale.x = nearestEnemy.enemy.hitsRemaining / nearestEnemy.enemy.maxHits;
                         nearestEnemy.enemy.healthBar.position.x = -nearestEnemy.enemy.scale.x / 2 + (nearestEnemy.enemy.scale.x * nearestEnemy.enemy.healthBar.scale.x) / 2;
@@ -548,7 +577,7 @@ function initGame(usePCUI) {
                         scene.remove(nearestEnemy.enemy);
                         enemies = enemies.filter(e => e !== nearestEnemy.enemy);
                     }
-                    ally.attackCooldown = 1.5; // Reset cooldown to 1.5 seconds
+                    ally.attackCooldown = 1.5;
                 }
             }
             ally.timer -= 0.016;
@@ -598,7 +627,7 @@ function initGame(usePCUI) {
     function saveScore(score) {
         leaderboard.push(score);
         leaderboard.sort((a, b) => b - a);
-        leaderboard = leaderboard.slice(0, 5); // Keep top 5 scores
+        leaderboard = leaderboard.slice(0, 5);
         localStorage.setItem('cubeDefenseLeaderboard', JSON.stringify(leaderboard));
         updateLeaderboardUI();
     }
@@ -623,7 +652,7 @@ function initGame(usePCUI) {
         if (Math.random() < 0.3) spawnEnemy('white');
         if (Math.random() < 0.2) spawnEnemy('magician');
         if (Math.random() < 0.4) spawnEnemy('baby');
-        waveTimer = 10; // Reset wave timer
+        waveTimer = 10;
         playerStats.wave++;
         document.getElementById('levelDisplay').textContent = `Level ${playerStats.wave - 1}`;
         showLevelDisplay();
@@ -644,7 +673,7 @@ function initGame(usePCUI) {
             spawnTimer -= 0.016;
             waveTimer -= 0.016;
             if (waveTimer <= 0 && enemies.length === 0 && enemiesToSpawn === 0) {
-                spawnWave(); // Ensure new wave spawns when all enemies are cleared
+                spawnWave();
             }
             if (playerStats.weaponTimer <= 0 && playerStats.damage > 1) {
                 playerStats.damage = 1;
