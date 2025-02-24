@@ -40,14 +40,23 @@ canvas {
     background: rgba(0, 0, 0, 0.7);
     padding: 10px;
 }
+#achievements {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    color: white;
+    font-family: Arial, sans-serif;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 10px;
+}
 #pauseButton {
     position: absolute;
-    top: 130px; /* Increased from 110px for more spacing */
+    top: 130px;
     left: 10px;
 }
 #restartWaveButton {
     position: absolute;
-    top: 170px; /* Adjusted from 150px to maintain spacing */
+    top: 170px;
     left: 10px;
 }
 #levelDisplay {
