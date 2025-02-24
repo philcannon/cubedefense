@@ -7,11 +7,11 @@
 </head>
 <body>
     <div id="ui">
-        <div>Health: <span id="health">100</span></div>
+        <div>Health P1: <span id="health">100</span></div>
+        <div>Health P2: <span id="healthP2">100</span></div>
         <div>Coins: <span id="coins">0</span></div>
         <div>Kills: <span id="kills">0</span></div>
         <div>Wave: <span id="wave">1</span></div>
-        <div>Special: <span id="special">Ready (Q)</span></div>
     </div>
     <div id="shop"></div>
     <div id="pauseMenu">
@@ -22,9 +22,19 @@
         <h3>Top Scores</h3>
         <ol id="leaderboardList"></ol>
     </div>
+    <div id="achievements">
+        <h3>Achievements</h3>
+        <ul id="achievementList"></ul>
+    </div>
     <div id="pauseButton"></div>
     <div id="restartWaveButton"></div>
     <div id="levelDisplay">Level 1</div>
+
+    <!-- Audio Elements -->
+    <audio id="attackSound" src="https://www.soundjay.com/buttons/sounds/button-1.mp3"></audio>
+    <audio id="deathSound" src="https://www.soundjay.com/nature/sounds/explosion-1.mp3"></audio>
+    <audio id="coinSound" src="https://www.soundjay.com/buttons/sounds/coin-drop-1.mp3"></audio>
+    <audio id="waveSound" src="https://www.soundjay.com/misc/sounds/bell-ring-01.mp3"></audio>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
     <script src="https://unpkg.com/@playcanvas/pcui@1.2.1/dist/pcui.js"></script>
