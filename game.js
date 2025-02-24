@@ -1,8 +1,8 @@
 window.addEventListener('load', () => {
     if (typeof pcui === 'undefined') {
-        initGame(false); // Fallback to HTML buttons
+        initGame(false);
     } else {
-        initGame(true); // Use PCUI
+        initGame(true);
     }
 });
 
@@ -14,6 +14,7 @@ function initGame(usePCUI) {
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
+    // Player 1
     const playerGroup = new THREE.Group();
     const playerGeometry = new THREE.BoxGeometry(1, 1, 1);
     const playerMaterial = new THREE.MeshPhongMaterial({ color: 0x00ff00, shininess: 100, specular: 0xffffff });
@@ -25,13 +26,22 @@ function initGame(usePCUI) {
     playerGroup.add(player, sword);
     scene.add(playerGroup);
 
+    // Player 2 (Co-op)
+    const player2Group = new THREE.Group();
+    const player2Geometry = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+    const player2Material = new THREE.MeshPhongMaterial({ color: 0x0000ff, shininess: 100, specular: 0xffffff });
+    const player2 = new THREE.Mesh(player2Geometry, player2Material);
+    player2Group.add(player2);
+    scene.add(player2Group);
+    player2Group.position.set(2, 0.4, 0); // Start near Player 1
+
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
     scene.add(ambientLight);
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
     directionalLight.position.set(0, 10, 10);
     scene.add(directionalLight);
 
-    scene.background = new THREE.Color(0x87ceeb);
+    scene.background = new THREE.Color(0x87ceeb); // Default day sky
     const sunGeometry = new THREE.SphereGeometry(2, 32, 32);
     const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
     const sun = new THREE.Mesh(sunGeometry, sunMaterial);
@@ -55,8 +65,10 @@ function initGame(usePCUI) {
     // Game State
     let playerStats = {
         health: 100, maxHealth: 100, coins: 0, kills: 0, baseSpeed: 0.15, speed: 0.15, damage: 1, armor: 0,
-        attackCooldown: 0, stunTimer: 0, speedTimer: 0, armorTimer: 0, weaponTimer: 0, wave: 1, whiteCubeKills: 0
+        attackCooldown: 0, stunTimer: 0, speedTimer: 0, armorTimer: 0, weaponTimer: 0, wave: 1, whiteCubeKills: 0,
+        goldenCubeKills: 0, regenTimer: 0, hasRadar: false
     };
+    let player2Stats = { health: 100, maxHealth: 100, attackCooldown: 0 }; // Player 2 stats
     let enemies = [];
     let portals = [];
     let allies = [];
@@ -64,13 +76,20 @@ function initGame(usePCUI) {
     let trailParticles = [];
     let armorBubbles = [];
     let projectiles = [];
+    let traps = [];
     const keys = {};
     let isPaused = false;
     let waveTimer = 0;
     let enemiesToSpawn = 0;
     let goldenCubeExists = false;
+    let dayNightCycle = 0; // 0-1 range, 0 = day, 1 = night
     let leaderboard = JSON.parse(localStorage.getItem('cubeDefenseLeaderboard')) || [];
+    let achievements = JSON.parse(localStorage.getItem('cubeDefenseAchievements')) || {
+        goldenSlayer: false, waveMaster: false
+    };
+    let hardMode = false; // Toggle via shop later
     updateLeaderboardUI();
+    updateAchievementUI();
 
     // UI Setup
     const shopContainer = document.getElementById('shop');
@@ -79,9 +98,13 @@ function initGame(usePCUI) {
         { type: 'health', cost: 30, text: 'Health (30 coins) [W]' },
         { type: 'speed', cost: 40, text: 'Speed (40 coins) [E]' },
         { type: 'weapon', cost: 60, text: 'Weapon (60 coins) [R]' },
-        { type: 'ally', cost: 30, text: 'Ally Cube (30 coins) [T]' }
+        { type: 'ally', cost: 30, text: 'Ally Cube (30 coins) [T]' },
+        { type: 'trap', cost: 40, text: 'Trap (40 coins) [Y]' },
+        { type: 'regen', cost: 100, text: 'Health Regen (100 coins) [U]' },
+        { type: 'radar', cost: 70, text: 'Radar (70 coins) [I]' },
+        { type: 'hardMode', cost: 0, text: 'Hard Mode Toggle [O]' }
     ];
-    const hotkeys = ['q', 'w', 'e', 'r', 't'];
+    const hotkeys = ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o'];
 
     if (usePCUI) {
         const shopTitle = new pcui.Label({ text: 'Shop' });
@@ -116,14 +139,18 @@ function initGame(usePCUI) {
         document.getElementById('restartWaveButton').appendChild(restartWaveButton);
     }
 
-    // Hotkey Listener for Shop
+    // Audio Setup
+    const attackSound = document.getElementById('attackSound');
+    const deathSound = document.getElementById('deathSound');
+    const coinSound = document.getElementById('coinSound');
+    const waveSound = document.getElementById('waveSound');
+
+    // Hotkey Listener
     document.addEventListener('keydown', (e) => {
         keys[e.key] = true;
         if (e.key === 'Escape') togglePause();
         const hotkeyIndex = hotkeys.indexOf(e.key.toLowerCase());
-        if (hotkeyIndex !== -1) {
-            buyUpgrade(upgrades[hotkeyIndex].type);
-        }
+        if (hotkeyIndex !== -1) buyUpgrade(upgrades[hotkeyIndex].type);
     });
     document.addEventListener('keyup', (e) => keys[e.key] = false);
 
@@ -137,13 +164,14 @@ function initGame(usePCUI) {
 
     function resetGame() {
         saveScore(playerStats.kills);
-        playerStats.health = playerStats.maxHealth;
-        playerStats.stunTimer = 0;
-        playerStats.coins = 0;
-        playerStats.kills = 0;
-        playerStats.wave = 1;
-        playerStats.whiteCubeKills = 0;
+        playerStats = {
+            health: 100, maxHealth: 100, coins: 0, kills: 0, baseSpeed: 0.15, speed: 0.15, damage: 1, armor: 0,
+            attackCooldown: 0, stunTimer: 0, speedTimer: 0, armorTimer: 0, weaponTimer: 0, wave: 1, whiteCubeKills: 0,
+            goldenCubeKills: 0, regenTimer: 0, hasRadar: playerStats.hasRadar
+        };
+        player2Stats = { health: 100, maxHealth: 100, attackCooldown: 0 };
         playerGroup.position.set(0, 0.5, 0);
+        player2Group.position.set(2, 0.4, 0);
         enemies.forEach(enemy => scene.remove(enemy.mesh || enemy));
         enemies = [];
         portals.forEach(portal => scene.remove(portal));
@@ -158,7 +186,10 @@ function initGame(usePCUI) {
         armorBubbles = [];
         projectiles.forEach(p => scene.remove(p));
         projectiles = [];
+        traps.forEach(t => scene.remove(t));
+        traps = [];
         goldenCubeExists = false;
+        dayNightCycle = 0;
         createPortal();
         createPortal();
         updateUI();
@@ -189,7 +220,7 @@ function initGame(usePCUI) {
 
     function spawnEnemy(type = 'normal', fromBoss = false) {
         let portal;
-        if (type === 'boss') {
+        if (type === 'boss' || type === 'wizardKing') {
             portal = portals.find(p => p.type === 'boss');
             if (!portal) return;
         } else {
@@ -199,7 +230,7 @@ function initGame(usePCUI) {
         }
         if (!portal) return;
 
-        let size, color, hits, speed, damage;
+        let size, color, hits, speed, damage, stealth = false, explosive = false;
         if (type === 'strong') { size = 1.5; color = 0x0000ff; hits = 7; speed = 0.03; damage = 1; }
         else if (type === 'boss') { size = 2; color = 0x800080; hits = 25; speed = 0.03; damage = 2; }
         else if (type === 'minion') { size = 0.7; color = 0x800080; hits = 5; speed = 0.04; damage = 0.5; }
@@ -210,11 +241,23 @@ function initGame(usePCUI) {
         else if (type === 'whiteMiniBoss') { size = 1.5; color = 0xffffff; hits = 30; speed = 0.04; damage = 2; }
         else if (type === 'magician') { size = 1.5; color = 0x000000; hits = 15; speed = 0.04; damage = 1; }
         else if (type === 'baby') { size = 0.5; color = 0xff69b4; hits = 3; speed = 0.15; damage = 0.5; }
+        else if (type === 'stealth') { size = 1; color = 0x666666; hits = 5; speed = 0.06; damage = 1; stealth = true; }
+        else if (type === 'explosive') { size = 1.2; color = 0xff4500; hits = 10; speed = 0.04; damage = 1; explosive = true; }
+        else if (type === 'wizardKing') { size = 2; color = 0x4b0082; hits = 30; speed = 0.03; damage = 2; }
         else { size = 1; color = 0xff0000; hits = 1; speed = 0.03; damage = 1; }
+
+        // Apply difficulty scaling
+        if (playerStats.wave > 10) hits *= (1 + (playerStats.wave - 10) * 0.05);
+        if (hardMode) {
+            hits *= 2;
+            speed *= 1.2;
+            damage *= 2;
+        }
+        if (dayNightCycle > 0.5) speed *= 1.1; // Faster at night
 
         const enemyGroup = new THREE.Group();
         const enemyGeometry = new THREE.BoxGeometry(size, size, size);
-        const enemyMaterial = new THREE.MeshPhongMaterial({ color, shininess: 100, specular: 0xffffff });
+        const enemyMaterial = new THREE.MeshPhongMaterial({ color, shininess: 100, specular: 0xffffff, transparent: stealth, opacity: stealth ? 0.2 : 1 });
         const enemy = new THREE.Mesh(enemyGeometry, enemyMaterial);
         enemyGroup.add(enemy);
 
@@ -244,11 +287,12 @@ function initGame(usePCUI) {
             enemyGroup.add(axe);
             enemyGroup.axe = axe;
             enemyGroup.attackCooldown = 0;
-        } else if (type === 'magician') {
+        } else if (type === 'magician' || type === 'wizardKing') {
             const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.3, 32), new THREE.MeshPhongMaterial({ color: 0x000000, shininess: 50 }));
             hat.position.y = size / 2 + 0.15;
             enemyGroup.add(hat);
             enemyGroup.attackCooldown = 0;
+            if (type === 'wizardKing') enemyGroup.summonCooldown = 0;
         } else if (type === 'baby') {
             const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.3, 16), new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 50 }));
             bottle.position.set(0.2, 0, 0);
@@ -270,6 +314,8 @@ function initGame(usePCUI) {
         enemyGroup.speed = speed;
         enemyGroup.damage = damage;
         enemyGroup.type = type;
+        enemyGroup.stealth = stealth;
+        enemyGroup.explosive = explosive;
         enemyGroup.position.copy(portal.position);
         enemyGroup.position.y = size / 2;
         scene.add(enemyGroup);
@@ -297,9 +343,11 @@ function initGame(usePCUI) {
         const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.1, 16), new THREE.MeshPhongMaterial({ color: 0xffff00, shininess: 50 }));
         coin.position.copy(position);
         coin.position.y = 0.05;
-        coin.value = Math.floor(Math.random() * 5) + 1;
+        coin.value = Math.floor(Math.random() * 5) + 1 * (hardMode ? 1.5 : 1);
         scene.add(coin);
         coins.push(coin);
+        coinSound.currentTime = 0;
+        coinSound.play();
         if (!goldenCubeExists && Math.random() < 0.05) spawnEnemy('golden');
     }
 
@@ -327,6 +375,25 @@ function initGame(usePCUI) {
         armorBubbles.push(bubble);
     }
 
+    function createDeathParticles(position, color) {
+        for (let i = 0; i < 10; i++) {
+            const particle = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), new THREE.MeshBasicMaterial({ color }));
+            particle.position.copy(position);
+            particle.velocity = new THREE.Vector3((Math.random() - 0.5) * 0.1, Math.random() * 0.1, (Math.random() - 0.5) * 0.1);
+            scene.add(particle);
+            trailParticles.push({ mesh: particle, life: 1 });
+        }
+    }
+
+    function createTrap(position) {
+        const trap = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.1, 16), new THREE.MeshPhongMaterial({ color: 0x808080, shininess: 50 }));
+        trap.position.copy(position);
+        trap.position.y = 0.05;
+        trap.timer = 10; // Trap lasts 10 seconds
+        scene.add(trap);
+        traps.push(trap);
+    }
+
     function togglePause() {
         isPaused = !isPaused;
         document.getElementById('pauseMenu').style.display = isPaused ? 'block' : 'none';
@@ -339,9 +406,11 @@ function initGame(usePCUI) {
 
     function updatePlayer() {
         if (isPaused || playerStats.stunTimer > 0) return;
+
+        // Player 1 Movement
         camera.position.set(playerGroup.position.x, 10, playerGroup.position.z + 15);
         camera.lookAt(playerGroup.position);
-        let currentSpeed = playerStats.speedTimer > 0 ? playerStats.baseSpeed * 2 : playerStats.speed; // Adjusted for no special
+        let currentSpeed = playerStats.speedTimer > 0 ? playerStats.baseSpeed * 2 : playerStats.speed;
         if (keys['ArrowUp']) playerGroup.position.z -= currentSpeed;
         if (keys['ArrowDown']) playerGroup.position.z += currentSpeed;
         if (keys['ArrowLeft']) playerGroup.position.x -= currentSpeed;
@@ -349,20 +418,39 @@ function initGame(usePCUI) {
         playerGroup.position.x = Math.max(-24, Math.min(24, playerGroup.position.x));
         playerGroup.position.z = Math.max(-14, Math.min(14, playerGroup.position.z));
         if (keys[' '] && playerStats.attackCooldown <= 0) {
-            attack();
+            attack(playerGroup, playerStats);
             playerStats.attackCooldown = 0.5;
             sword.rotation.x = Math.PI / 4;
+            attackSound.currentTime = 0;
+            attackSound.play();
         }
         sword.rotation.x *= 0.9;
+
+        // Player 2 Movement (Co-op)
+        if (keys['w']) player2Group.position.z -= playerStats.baseSpeed;
+        if (keys['s']) player2Group.position.z += playerStats.baseSpeed;
+        if (keys['a']) player2Group.position.x -= playerStats.baseSpeed;
+        if (keys['d']) player2Group.position.x += playerStats.baseSpeed;
+        player2Group.position.x = Math.max(-24, Math.min(24, player2Group.position.x));
+        player2Group.position.z = Math.max(-14, Math.min(14, player2Group.position.z));
+        if (keys['m'] && player2Stats.attackCooldown <= 0) {
+            attack(player2Group, player2Stats, 2); // Player 2 damage fixed at 2
+            player2Stats.attackCooldown = 0.5;
+            attackSound.currentTime = 0;
+            attackSound.play();
+        }
+
         for (let i = coins.length - 1; i >= 0; i--) {
-            if (playerGroup.position.distanceTo(coins[i].position) < 1) {
+            if (playerGroup.position.distanceTo(coins[i].position) < 1 || player2Group.position.distanceTo(coins[i].position) < 1) {
                 playerStats.coins += coins[i].value;
                 scene.remove(coins[i]);
                 coins.splice(i, 1);
                 updateUI();
             }
         }
+
         playerStats.attackCooldown -= 0.016;
+        player2Stats.attackCooldown -= 0.016;
         playerStats.speedTimer = Math.max(0, playerStats.speedTimer - 0.016);
         playerStats.armorTimer = Math.max(0, playerStats.armorTimer - 0.016);
         playerStats.weaponTimer = Math.max(0, playerStats.weaponTimer - 0.016);
@@ -372,9 +460,24 @@ function initGame(usePCUI) {
             armorBubbles = [];
         }
         playerStats.stunTimer = Math.max(0, playerStats.stunTimer - 0.016);
+
+        // Health Regen
+        if (playerStats.regenTimer > 0) {
+            playerStats.regenTimer -= 0.016;
+            if (playerStats.regenTimer <= 0) {
+                playerStats.health = Math.min(playerStats.maxHealth, playerStats.health + 5);
+                player2Stats.health = Math.min(player2Stats.maxHealth, player2Stats.health + 5);
+                playerStats.regenTimer = 10; // Regen every 10 seconds
+                updateUI();
+            }
+        }
+
         for (let i = trailParticles.length - 1; i >= 0; i--) {
             trailParticles[i].life -= 0.016;
             trailParticles[i].mesh.scale.multiplyScalar(0.95);
+            if (trailParticles[i].velocity) {
+                trailParticles[i].mesh.position.add(trailParticles[i].velocity);
+            }
             if (trailParticles[i].life <= 0) {
                 scene.remove(trailParticles[i].mesh);
                 trailParticles.splice(i, 1);
@@ -389,12 +492,12 @@ function initGame(usePCUI) {
         updateUI();
     }
 
-    function attack() {
-        const damage = playerStats.damage; // No special multiplier
-        const hitRange = playerStats.weaponTimer > 0 ? 4 : 3;
+    function attack(attacker, attackerStats, fixedDamage = null) {
+        const damage = fixedDamage || attackerStats.damage;
+        const hitRange = attackerStats.weaponTimer > 0 ? 4 : 3;
         for (let i = enemies.length - 1; i >= 0; i--) {
             const enemy = enemies[i];
-            if (playerGroup.position.distanceTo(enemy.position) < hitRange) {
+            if (attacker.position.distanceTo(enemy.position) < hitRange) {
                 enemy.hitsRemaining -= damage;
                 if (enemy.healthBar) {
                     enemy.healthBar.scale.x = enemy.hitsRemaining / enemy.maxHits;
@@ -402,8 +505,31 @@ function initGame(usePCUI) {
                 }
                 if (enemy.hitsRemaining <= 0) {
                     spawnCoin(enemy.position);
+                    createDeathParticles(enemy.position, enemy.material.color.getHex());
+                    deathSound.currentTime = 0;
+                    deathSound.play();
                     scene.remove(enemy);
-                    if (enemy.type === 'golden') goldenCubeExists = false;
+                    if (enemy.type === 'golden') {
+                        goldenCubeExists = false;
+                        playerStats.goldenCubeKills++;
+                        checkAchievements();
+                    }
+                    if (enemy.explosive) {
+                        for (let j = enemies.length - 1; j >= 0; j--) {
+                            if (enemies[j] !== enemy && enemy.position.distanceTo(enemies[j].position) < 3) {
+                                enemies[j].hitsRemaining -= 5; // Explosion damage
+                                if (enemies[j].hitsRemaining <= 0) {
+                                    spawnCoin(enemies[j].position);
+                                    createDeathParticles(enemies[j].position, enemies[j].material.color.getHex());
+                                    scene.remove(enemies[j]);
+                                    enemies.splice(j, 1);
+                                    playerStats.kills++;
+                                }
+                            }
+                        }
+                        if (enemy.position.distanceTo(playerGroup.position) < 3) playerStats.health -= 5;
+                        if (enemy.position.distanceTo(player2Group.position) < 3) player2Stats.health -= 5;
+                    }
                     enemies.splice(i, 1);
                     playerStats.kills++;
                     if (enemy.type === 'white') {
@@ -413,6 +539,9 @@ function initGame(usePCUI) {
                     if (playerStats.wave >= 5 && playerStats.kills % 50 === 0) {
                         createPortal('boss');
                         spawnEnemy('boss');
+                    } else if (playerStats.kills % 75 === 0) {
+                        createPortal('boss');
+                        spawnEnemy('wizardKing');
                     } else if (playerStats.kills % 10 === 0) spawnEnemy('strong');
                     updateUI();
                 }
@@ -441,9 +570,7 @@ function initGame(usePCUI) {
                     }
                 }
                 portals.forEach(portal => {
-                    if (portal.type === 'normal' && enemy.position.distanceTo(portal.position) < 2) {
-                        return;
-                    }
+                    if (portal.type === 'normal' && enemy.position.distanceTo(portal.position) < 2) return;
                 });
             } else {
                 direction = playerGroup.position.clone().sub(enemy.position).normalize();
@@ -455,16 +582,27 @@ function initGame(usePCUI) {
                 enemy.position.z = Math.max(-14, Math.min(14, enemy.position.z));
             }
 
+            if (enemy.stealth && !playerStats.hasRadar && playerGroup.position.distanceTo(enemy.position) > 5) {
+                enemy.material.opacity = 0.2;
+            } else {
+                enemy.material.opacity = 1;
+            }
+
+            traps.forEach(trap => {
+                if (enemy.position.distanceTo(trap.position) < 1) {
+                    enemy.speed *= 0.5; // Slowed by trap
+                    enemy.hitsRemaining -= 0.016; // Small damage over time
+                }
+            });
+
             if (enemy.type === 'boss') {
                 enemy.attackCooldown -= 0.016;
                 enemy.summonCooldown -= 0.016;
                 enemy.shockwaveCooldown -= 0.016;
                 if (enemy.attackCooldown <= 0) {
                     enemy.sword.rotation.x = Math.PI / 4;
-                    if (playerGroup.position.distanceTo(enemy.position) < 3) {
-                        playerStats.health -= enemy.damage;
-                        updateUI();
-                    }
+                    if (playerGroup.position.distanceTo(enemy.position) < 3) playerStats.health -= enemy.damage;
+                    if (player2Group.position.distanceTo(enemy.position) < 3) player2Stats.health -= enemy.damage;
                     enemy.attackCooldown = 0.5;
                 }
                 enemy.sword.rotation.x *= 0.9;
@@ -472,7 +610,7 @@ function initGame(usePCUI) {
                     for (let i = 0; i < 3; i++) spawnEnemy('minion', true);
                     enemy.summonCooldown = 20;
                 }
-                if (enemy.shockwaveCooldown <= 0 && playerGroup.position.distanceTo(enemy.position) < 5) {
+                if (enemy.shockwaveCooldown <= 0 && (playerGroup.position.distanceTo(enemy.position) < 5 || player2Group.position.distanceTo(enemy.position) < 5)) {
                     playerStats.stunTimer = 2;
                     enemy.shockwaveCooldown = 10;
                 }
@@ -483,24 +621,39 @@ function initGame(usePCUI) {
                     if (playerGroup.position.distanceTo(enemy.position) < 3) {
                         playerStats.health -= enemy.damage;
                         playerStats.stunTimer = 2;
-                        updateUI();
+                    }
+                    if (player2Group.position.distanceTo(enemy.position) < 3) {
+                        player2Stats.health -= enemy.damage;
                     }
                     enemy.attackCooldown = 0.5;
                 }
                 enemy.axe.rotation.x *= 0.9;
-            } else if (enemy.type === 'magician') {
+            } else if (enemy.type === 'magician' || enemy.type === 'wizardKing') {
                 enemy.attackCooldown -= 0.016;
+                if (enemy.type === 'wizardKing') enemy.summonCooldown -= 0.016;
                 if (enemy.attackCooldown <= 0) {
                     const projDirection = playerGroup.position.clone().sub(enemy.position).normalize();
                     spawnProjectile(enemy.position, projDirection);
                     enemy.attackCooldown = 1;
                 }
+                if (enemy.type === 'wizardKing' && enemy.summonCooldown <= 0) {
+                    for (let i = 0; i < 5; i++) {
+                        const projDirection = new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5).normalize();
+                        spawnProjectile(enemy.position, projDirection);
+                    }
+                    enemy.summonCooldown = 15;
+                }
             }
-            if (enemy.type !== 'golden' && playerGroup.position.distanceTo(enemy.position) < 1) {
-                playerStats.health -= Math.max(enemy.damage - (playerStats.armorTimer > 0 ? playerStats.armor * 0.2 : playerStats.armor * 0.1), 0.1);
-                if (enemy.type === 'boss') playerStats.stunTimer = 2;
-                updateUI();
-                if (playerStats.health <= 0) {
+
+            if (enemy.type !== 'golden') {
+                if (playerGroup.position.distanceTo(enemy.position) < 1) {
+                    playerStats.health -= Math.max(enemy.damage - (playerStats.armorTimer > 0 ? playerStats.armor * 0.2 : playerStats.armor * 0.1), 0.1);
+                    if (enemy.type === 'boss') playerStats.stunTimer = 2;
+                }
+                if (player2Group.position.distanceTo(enemy.position) < 1) {
+                    player2Stats.health -= Math.max(enemy.damage - (playerStats.armorTimer > 0 ? playerStats.armor * 0.2 : playerStats.armor * 0.1), 0.1);
+                }
+                if (playerStats.health <= 0 || player2Stats.health <= 0) {
                     alert('Game Over! Score: ' + playerStats.kills);
                     resetGame();
                 }
@@ -522,10 +675,20 @@ function initGame(usePCUI) {
                 playerStats.health -= 1;
                 scene.remove(proj);
                 projectiles.splice(i, 1);
-                updateUI();
-            } else if (proj.position.distanceTo(playerGroup.position) > 20) {
+            } else if (player2Group.position.distanceTo(proj.position) < 1) {
+                player2Stats.health -= 1;
                 scene.remove(proj);
                 projectiles.splice(i, 1);
+            } else if (proj.position.distanceTo(playerGroup.position) > 20 && proj.position.distanceTo(player2Group.position) > 20) {
+                scene.remove(proj);
+                projectiles.splice(i, 1);
+            }
+        }
+        for (let i = traps.length - 1; i >= 0; i--) {
+            traps[i].timer -= 0.016;
+            if (traps[i].timer <= 0) {
+                scene.remove(traps[i]);
+                traps.splice(i, 1);
             }
         }
     }
@@ -549,7 +712,12 @@ function initGame(usePCUI) {
                     }
                     if (nearestEnemy.enemy.hitsRemaining <= 0) {
                         spawnCoin(nearestEnemy.enemy.position);
-                        if (nearestEnemy.enemy.type === 'golden') goldenCubeExists = false;
+                        createDeathParticles(nearestEnemy.enemy.position, nearestEnemy.enemy.material.color.getHex());
+                        if (nearestEnemy.enemy.type === 'golden') {
+                            goldenCubeExists = false;
+                            playerStats.goldenCubeKills++;
+                            checkAchievements();
+                        }
                         scene.remove(nearestEnemy.enemy);
                         enemies = enemies.filter(e => e !== nearestEnemy.enemy);
                     }
@@ -574,6 +742,8 @@ function initGame(usePCUI) {
         } else if (type === 'health' && playerStats.coins >= 30) {
             playerStats.maxHealth += 20;
             playerStats.health = playerStats.maxHealth;
+            player2Stats.maxHealth += 20;
+            player2Stats.health = player2Stats.maxHealth;
             playerStats.coins -= 30;
         } else if (type === 'speed' && playerStats.coins >= 40 && playerStats.speedTimer <= 0) {
             playerStats.speedTimer = 10;
@@ -586,12 +756,24 @@ function initGame(usePCUI) {
         } else if (type === 'ally' && playerStats.coins >= 30) {
             spawnAlly();
             playerStats.coins -= 30;
+        } else if (type === 'trap' && playerStats.coins >= 40) {
+            createTrap(playerGroup.position);
+            playerStats.coins -= 40;
+        } else if (type === 'regen' && playerStats.coins >= 100 && playerStats.regenTimer === 0) {
+            playerStats.regenTimer = 10;
+            playerStats.coins -= 100;
+        } else if (type === 'radar' && playerStats.coins >= 70 && !playerStats.hasRadar) {
+            playerStats.hasRadar = true;
+            playerStats.coins -= 70;
+        } else if (type === 'hardMode') {
+            hardMode = !hardMode;
         }
         updateUI();
     }
 
     function updateUI() {
         document.getElementById('health').textContent = Math.floor(playerStats.health);
+        document.getElementById('healthP2').textContent = Math.floor(player2Stats.health);
         document.getElementById('coins').textContent = playerStats.coins;
         document.getElementById('kills').textContent = playerStats.kills;
         document.getElementById('wave').textContent = playerStats.wave;
@@ -615,6 +797,34 @@ function initGame(usePCUI) {
         });
     }
 
+    function checkAchievements() {
+        if (playerStats.goldenCubeKills >= 10 && !achievements.goldenSlayer) {
+            achievements.goldenSlayer = true;
+            alert('Achievement Unlocked: Golden Slayer!');
+        }
+        if (playerStats.wave >= 20 && !achievements.waveMaster) {
+            achievements.waveMaster = true;
+            alert('Achievement Unlocked: Wave Master!');
+        }
+        localStorage.setItem('cubeDefenseAchievements', JSON.stringify(achievements));
+        updateAchievementUI();
+    }
+
+    function updateAchievementUI() {
+        const list = document.getElementById('achievementList');
+        list.innerHTML = '';
+        if (achievements.goldenSlayer) {
+            const li = document.createElement('li');
+            li.textContent = 'Golden Slayer (10 Golden Kills)';
+            list.appendChild(li);
+        }
+        if (achievements.waveMaster) {
+            const li = document.createElement('li');
+            li.textContent = 'Wave Master (Wave 20)';
+            list.appendChild(li);
+        }
+    }
+
     function spawnWave() {
         enemiesToSpawn = playerStats.wave * 5;
         if (playerStats.wave % 2 === 0) spawnEnemy('fast');
@@ -625,10 +835,15 @@ function initGame(usePCUI) {
         if (Math.random() < 0.3) spawnEnemy('white');
         if (Math.random() < 0.2) spawnEnemy('magician');
         if (Math.random() < 0.4) spawnEnemy('baby');
+        if (playerStats.wave > 5 && Math.random() < 0.2) spawnEnemy('stealth');
+        if (playerStats.wave > 7 && Math.random() < 0.15) spawnEnemy('explosive');
         waveTimer = 10;
         playerStats.wave++;
+        waveSound.currentTime = 0;
+        waveSound.play();
         document.getElementById('levelDisplay').textContent = `Level ${playerStats.wave - 1}`;
         showLevelDisplay();
+        checkAchievements();
     }
 
     let spawnTimer = 0;
@@ -638,6 +853,12 @@ function initGame(usePCUI) {
             updatePlayer();
             updateEnemies();
             updateAllies();
+
+            // Day/Night Cycle
+            dayNightCycle = (dayNightCycle + 0.0005) % 1; // 33-minute cycle (2000 frames at 60 FPS)
+            scene.background = new THREE.Color().lerpColors(new THREE.Color(0x87ceeb), new THREE.Color(0x191970), dayNightCycle);
+            ambientLight.intensity = 0.5 - dayNightCycle * 0.3; // Dimmer at night
+
             if (enemiesToSpawn > 0 && spawnTimer <= 0 && portals.length > 0) {
                 spawnEnemy('normal');
                 enemiesToSpawn--;
