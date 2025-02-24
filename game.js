@@ -14,7 +14,7 @@ function initGame(usePCUI) {
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    // Player 1
+    // Player
     const playerGroup = new THREE.Group();
     const playerGeometry = new THREE.BoxGeometry(1, 1, 1);
     const playerMaterial = new THREE.MeshPhongMaterial({ color: 0x00ff00, shininess: 100, specular: 0xffffff });
@@ -25,15 +25,7 @@ function initGame(usePCUI) {
     sword.position.set(0.6, 0, 0.5);
     playerGroup.add(player, sword);
     scene.add(playerGroup);
-
-    // Player 2 (Co-op)
-    const player2Group = new THREE.Group();
-    const player2Geometry = new THREE.BoxGeometry(0.8, 0.8, 0.8);
-    const player2Material = new THREE.MeshPhongMaterial({ color: 0x0000ff, shininess: 100, specular: 0xffffff });
-    const player2 = new THREE.Mesh(player2Geometry, player2Material);
-    player2Group.add(player2);
-    scene.add(player2Group);
-    player2Group.position.set(2, 0.4, 0); // Start near Player 1
+    playerGroup.position.set(0, 0.5, 0); // Ensure player starts at origin
 
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
     scene.add(ambientLight);
@@ -68,7 +60,6 @@ function initGame(usePCUI) {
         attackCooldown: 0, stunTimer: 0, speedTimer: 0, armorTimer: 0, weaponTimer: 0, wave: 1, whiteCubeKills: 0,
         goldenCubeKills: 0, regenTimer: 0, hasRadar: false
     };
-    let player2Stats = { health: 100, maxHealth: 100, attackCooldown: 0 }; // Player 2 stats
     let enemies = [];
     let portals = [];
     let allies = [];
@@ -87,7 +78,7 @@ function initGame(usePCUI) {
     let achievements = JSON.parse(localStorage.getItem('cubeDefenseAchievements')) || {
         goldenSlayer: false, waveMaster: false
     };
-    let hardMode = false; // Toggle via shop later
+    let hardMode = false;
     updateLeaderboardUI();
     updateAchievementUI();
 
@@ -169,9 +160,7 @@ function initGame(usePCUI) {
             attackCooldown: 0, stunTimer: 0, speedTimer: 0, armorTimer: 0, weaponTimer: 0, wave: 1, whiteCubeKills: 0,
             goldenCubeKills: 0, regenTimer: 0, hasRadar: playerStats.hasRadar
         };
-        player2Stats = { health: 100, maxHealth: 100, attackCooldown: 0 };
         playerGroup.position.set(0, 0.5, 0);
-        player2Group.position.set(2, 0.4, 0);
         enemies.forEach(enemy => scene.remove(enemy.mesh || enemy));
         enemies = [];
         portals.forEach(portal => scene.remove(portal));
@@ -407,9 +396,10 @@ function initGame(usePCUI) {
     function updatePlayer() {
         if (isPaused || playerStats.stunTimer > 0) return;
 
-        // Player 1 Movement
+        // Camera follows player
         camera.position.set(playerGroup.position.x, 10, playerGroup.position.z + 15);
         camera.lookAt(playerGroup.position);
+
         let currentSpeed = playerStats.speedTimer > 0 ? playerStats.baseSpeed * 2 : playerStats.speed;
         if (keys['ArrowUp']) playerGroup.position.z -= currentSpeed;
         if (keys['ArrowDown']) playerGroup.position.z += currentSpeed;
@@ -418,7 +408,7 @@ function initGame(usePCUI) {
         playerGroup.position.x = Math.max(-24, Math.min(24, playerGroup.position.x));
         playerGroup.position.z = Math.max(-14, Math.min(14, playerGroup.position.z));
         if (keys[' '] && playerStats.attackCooldown <= 0) {
-            attack(playerGroup, playerStats);
+            attack();
             playerStats.attackCooldown = 0.5;
             sword.rotation.x = Math.PI / 4;
             attackSound.currentTime = 0;
@@ -426,22 +416,8 @@ function initGame(usePCUI) {
         }
         sword.rotation.x *= 0.9;
 
-        // Player 2 Movement (Co-op)
-        if (keys['w']) player2Group.position.z -= playerStats.baseSpeed;
-        if (keys['s']) player2Group.position.z += playerStats.baseSpeed;
-        if (keys['a']) player2Group.position.x -= playerStats.baseSpeed;
-        if (keys['d']) player2Group.position.x += playerStats.baseSpeed;
-        player2Group.position.x = Math.max(-24, Math.min(24, player2Group.position.x));
-        player2Group.position.z = Math.max(-14, Math.min(14, player2Group.position.z));
-        if (keys['m'] && player2Stats.attackCooldown <= 0) {
-            attack(player2Group, player2Stats, 2); // Player 2 damage fixed at 2
-            player2Stats.attackCooldown = 0.5;
-            attackSound.currentTime = 0;
-            attackSound.play();
-        }
-
         for (let i = coins.length - 1; i >= 0; i--) {
-            if (playerGroup.position.distanceTo(coins[i].position) < 1 || player2Group.position.distanceTo(coins[i].position) < 1) {
+            if (playerGroup.position.distanceTo(coins[i].position) < 1) {
                 playerStats.coins += coins[i].value;
                 scene.remove(coins[i]);
                 coins.splice(i, 1);
@@ -450,7 +426,6 @@ function initGame(usePCUI) {
         }
 
         playerStats.attackCooldown -= 0.016;
-        player2Stats.attackCooldown -= 0.016;
         playerStats.speedTimer = Math.max(0, playerStats.speedTimer - 0.016);
         playerStats.armorTimer = Math.max(0, playerStats.armorTimer - 0.016);
         playerStats.weaponTimer = Math.max(0, playerStats.weaponTimer - 0.016);
@@ -466,7 +441,6 @@ function initGame(usePCUI) {
             playerStats.regenTimer -= 0.016;
             if (playerStats.regenTimer <= 0) {
                 playerStats.health = Math.min(playerStats.maxHealth, playerStats.health + 5);
-                player2Stats.health = Math.min(player2Stats.maxHealth, player2Stats.health + 5);
                 playerStats.regenTimer = 10; // Regen every 10 seconds
                 updateUI();
             }
@@ -492,12 +466,12 @@ function initGame(usePCUI) {
         updateUI();
     }
 
-    function attack(attacker, attackerStats, fixedDamage = null) {
-        const damage = fixedDamage || attackerStats.damage;
-        const hitRange = attackerStats.weaponTimer > 0 ? 4 : 3;
+    function attack() {
+        const damage = playerStats.damage;
+        const hitRange = playerStats.weaponTimer > 0 ? 4 : 3;
         for (let i = enemies.length - 1; i >= 0; i--) {
             const enemy = enemies[i];
-            if (attacker.position.distanceTo(enemy.position) < hitRange) {
+            if (playerGroup.position.distanceTo(enemy.position) < hitRange) {
                 enemy.hitsRemaining -= damage;
                 if (enemy.healthBar) {
                     enemy.healthBar.scale.x = enemy.hitsRemaining / enemy.maxHits;
@@ -528,7 +502,6 @@ function initGame(usePCUI) {
                             }
                         }
                         if (enemy.position.distanceTo(playerGroup.position) < 3) playerStats.health -= 5;
-                        if (enemy.position.distanceTo(player2Group.position) < 3) player2Stats.health -= 5;
                     }
                     enemies.splice(i, 1);
                     playerStats.kills++;
@@ -602,7 +575,6 @@ function initGame(usePCUI) {
                 if (enemy.attackCooldown <= 0) {
                     enemy.sword.rotation.x = Math.PI / 4;
                     if (playerGroup.position.distanceTo(enemy.position) < 3) playerStats.health -= enemy.damage;
-                    if (player2Group.position.distanceTo(enemy.position) < 3) player2Stats.health -= enemy.damage;
                     enemy.attackCooldown = 0.5;
                 }
                 enemy.sword.rotation.x *= 0.9;
@@ -610,7 +582,7 @@ function initGame(usePCUI) {
                     for (let i = 0; i < 3; i++) spawnEnemy('minion', true);
                     enemy.summonCooldown = 20;
                 }
-                if (enemy.shockwaveCooldown <= 0 && (playerGroup.position.distanceTo(enemy.position) < 5 || player2Group.position.distanceTo(enemy.position) < 5)) {
+                if (enemy.shockwaveCooldown <= 0 && playerGroup.position.distanceTo(enemy.position) < 5) {
                     playerStats.stunTimer = 2;
                     enemy.shockwaveCooldown = 10;
                 }
@@ -621,9 +593,6 @@ function initGame(usePCUI) {
                     if (playerGroup.position.distanceTo(enemy.position) < 3) {
                         playerStats.health -= enemy.damage;
                         playerStats.stunTimer = 2;
-                    }
-                    if (player2Group.position.distanceTo(enemy.position) < 3) {
-                        player2Stats.health -= enemy.damage;
                     }
                     enemy.attackCooldown = 0.5;
                 }
@@ -645,15 +614,11 @@ function initGame(usePCUI) {
                 }
             }
 
-            if (enemy.type !== 'golden') {
-                if (playerGroup.position.distanceTo(enemy.position) < 1) {
-                    playerStats.health -= Math.max(enemy.damage - (playerStats.armorTimer > 0 ? playerStats.armor * 0.2 : playerStats.armor * 0.1), 0.1);
-                    if (enemy.type === 'boss') playerStats.stunTimer = 2;
-                }
-                if (player2Group.position.distanceTo(enemy.position) < 1) {
-                    player2Stats.health -= Math.max(enemy.damage - (playerStats.armorTimer > 0 ? playerStats.armor * 0.2 : playerStats.armor * 0.1), 0.1);
-                }
-                if (playerStats.health <= 0 || player2Stats.health <= 0) {
+            if (enemy.type !== 'golden' && playerGroup.position.distanceTo(enemy.position) < 1) {
+                playerStats.health -= Math.max(enemy.damage - (playerStats.armorTimer > 0 ? playerStats.armor * 0.2 : playerStats.armor * 0.1), 0.1);
+                if (enemy.type === 'boss') playerStats.stunTimer = 2;
+                updateUI();
+                if (playerStats.health <= 0) {
                     alert('Game Over! Score: ' + playerStats.kills);
                     resetGame();
                 }
@@ -675,11 +640,8 @@ function initGame(usePCUI) {
                 playerStats.health -= 1;
                 scene.remove(proj);
                 projectiles.splice(i, 1);
-            } else if (player2Group.position.distanceTo(proj.position) < 1) {
-                player2Stats.health -= 1;
-                scene.remove(proj);
-                projectiles.splice(i, 1);
-            } else if (proj.position.distanceTo(playerGroup.position) > 20 && proj.position.distanceTo(player2Group.position) > 20) {
+                updateUI();
+            } else if (proj.position.distanceTo(playerGroup.position) > 20) {
                 scene.remove(proj);
                 projectiles.splice(i, 1);
             }
@@ -742,8 +704,6 @@ function initGame(usePCUI) {
         } else if (type === 'health' && playerStats.coins >= 30) {
             playerStats.maxHealth += 20;
             playerStats.health = playerStats.maxHealth;
-            player2Stats.maxHealth += 20;
-            player2Stats.health = player2Stats.maxHealth;
             playerStats.coins -= 30;
         } else if (type === 'speed' && playerStats.coins >= 40 && playerStats.speedTimer <= 0) {
             playerStats.speedTimer = 10;
@@ -773,7 +733,6 @@ function initGame(usePCUI) {
 
     function updateUI() {
         document.getElementById('health').textContent = Math.floor(playerStats.health);
-        document.getElementById('healthP2').textContent = Math.floor(player2Stats.health);
         document.getElementById('coins').textContent = playerStats.coins;
         document.getElementById('kills').textContent = playerStats.kills;
         document.getElementById('wave').textContent = playerStats.wave;
