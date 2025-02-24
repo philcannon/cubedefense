@@ -79,6 +79,7 @@ function initGame(usePCUI) {
         goldenSlayer: false, waveMaster: false
     };
     let hardMode = false;
+    let userInteracted = false; // Track user interaction for audio
     updateLeaderboardUI();
     updateAchievementUI();
 
@@ -139,6 +140,7 @@ function initGame(usePCUI) {
     // Hotkey Listener
     document.addEventListener('keydown', (e) => {
         keys[e.key] = true;
+        userInteracted = true; // Mark interaction for audio
         if (e.key === 'Escape') togglePause();
         const hotkeyIndex = hotkeys.indexOf(e.key.toLowerCase());
         if (hotkeyIndex !== -1) buyUpgrade(upgrades[hotkeyIndex].type);
@@ -163,7 +165,7 @@ function initGame(usePCUI) {
             goldenCubeKills: 0, regenTimer: 0, hasRadar: playerStats.hasRadar
         };
         playerGroup.position.set(0, 0.5, 0);
-        enemies.forEach(enemy => scene.remove(enemy.mesh || enemy));
+        enemies.forEach(enemy => scene.remove(enemy));
         enemies = [];
         portals.forEach(portal => scene.remove(portal));
         portals = [];
@@ -337,7 +339,7 @@ function initGame(usePCUI) {
         coin.value = Math.floor(Math.random() * 5) + 1 * (hardMode ? 1.5 : 1);
         scene.add(coin);
         coins.push(coin);
-        if (coinSound) {
+        if (userInteracted && coinSound) {
             coinSound.currentTime = 0;
             coinSound.play();
         }
@@ -417,7 +419,7 @@ function initGame(usePCUI) {
             attack();
             playerStats.attackCooldown = 0.5;
             sword.rotation.x = Math.PI / 4;
-            if (attackSound) {
+            if (userInteracted && attackSound) {
                 attackSound.currentTime = 0;
                 attackSound.play();
             }
@@ -487,8 +489,8 @@ function initGame(usePCUI) {
                 }
                 if (enemy.hitsRemaining <= 0) {
                     spawnCoin(enemy.position);
-                    createDeathParticles(enemy.position, enemy.material.color.getHex());
-                    if (deathSound) {
+                    createDeathParticles(enemy.position, enemy.children[0].material.color.getHex());
+                    if (userInteracted && deathSound) {
                         deathSound.currentTime = 0;
                         deathSound.play();
                     }
@@ -504,7 +506,7 @@ function initGame(usePCUI) {
                                 enemies[j].hitsRemaining -= 5; // Explosion damage
                                 if (enemies[j].hitsRemaining <= 0) {
                                     spawnCoin(enemies[j].position);
-                                    createDeathParticles(enemies[j].position, enemies[j].material.color.getHex());
+                                    createDeathParticles(enemies[j].position, enemies[j].children[0].material.color.getHex());
                                     scene.remove(enemies[j]);
                                     enemies.splice(j, 1);
                                     playerStats.kills++;
@@ -565,10 +567,13 @@ function initGame(usePCUI) {
                 enemy.position.z = Math.max(-14, Math.min(14, enemy.position.z));
             }
 
-            if (enemy.stealth && !playerStats.hasRadar && playerGroup.position.distanceTo(enemy.position) > 5) {
-                enemy.material.opacity = 0.2;
-            } else {
-                enemy.material.opacity = 1;
+            // Stealth check - ensure enemy has a mesh child
+            if (enemy.stealth && enemy.children[0]) {
+                if (!playerStats.hasRadar && playerGroup.position.distanceTo(enemy.position) > 5) {
+                    enemy.children[0].material.opacity = 0.2;
+                } else {
+                    enemy.children[0].material.opacity = 1;
+                }
             }
 
             traps.forEach(trap => {
@@ -684,7 +689,7 @@ function initGame(usePCUI) {
                     }
                     if (nearestEnemy.enemy.hitsRemaining <= 0) {
                         spawnCoin(nearestEnemy.enemy.position);
-                        createDeathParticles(nearestEnemy.enemy.position, nearestEnemy.enemy.material.color.getHex());
+                        createDeathParticles(nearestEnemy.enemy.position, nearestEnemy.enemy.children[0].material.color.getHex());
                         if (nearestEnemy.enemy.type === 'golden') {
                             goldenCubeExists = false;
                             playerStats.goldenCubeKills++;
@@ -817,7 +822,7 @@ function initGame(usePCUI) {
         if (playerStats.wave > 7 && Math.random() < 0.15) spawnEnemy('explosive');
         waveTimer = 10;
         playerStats.wave++;
-        if (waveSound) {
+        if (userInteracted && waveSound) {
             waveSound.currentTime = 0;
             waveSound.play();
         }
