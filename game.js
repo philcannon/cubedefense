@@ -162,9 +162,15 @@ function initGame(usePCUI) {
     }
 
     function spawnEnemy(type = 'normal', fromBoss = false) {
-        const portal = fromBoss ? 
-            portals.find(p => p.type === 'boss') || portals[Math.floor(Math.random() * portals.length)] :
-            portals[Math.floor(Math.random() * portals.length)];
+        let portal;
+        if (type === 'boss') {
+            portal = portals.find(p => p.type === 'boss'); // Boss only spawns from purple portal
+            if (!portal) return; // No boss portal available
+        } else {
+            portal = fromBoss ? 
+                portals.find(p => p.type === 'boss') || portals[Math.floor(Math.random() * portals.length)] :
+                portals[Math.floor(Math.random() * portals.length)];
+        }
         if (!portal) return;
 
         let size, color, hits, speed, damage;
@@ -248,6 +254,7 @@ function initGame(usePCUI) {
         const ally = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), new THREE.MeshPhongMaterial({ color: 0x0000ff, shininess: 100, specular: 0xffffff }));
         ally.position.copy(playerGroup.position);
         ally.timer = 7;
+        ally.attackCooldown = 0; // Add cooldown for ally attacks
         const healthBarBg = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.1), new THREE.MeshBasicMaterial({ color: 0x666666 }));
         const healthBar = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.1), new THREE.MeshBasicMaterial({ color: 0xff0000 }));
         healthBarBg.position.set(0, 0.5, 0);
@@ -306,7 +313,7 @@ function initGame(usePCUI) {
         document.getElementById('pauseMenu').style.display = isPaused ? 'block' : 'none';
     }
 
-    window.resumeGame = function() { // Expose globally for HTML button
+    window.resumeGame = function() {
         isPaused = false;
         document.getElementById('pauseMenu').style.display = 'none';
     };
@@ -439,10 +446,8 @@ function initGame(usePCUI) {
                         direction = goldenPortal.position.clone().sub(enemy.position).normalize();
                     }
                 }
-            } else if (enemy.type === 'baby') {
-                direction = playerGroup.position.clone().sub(enemy.position).normalize().negate();
             } else {
-                direction = playerGroup.position.clone().sub(enemy.position).normalize();
+                direction = playerGroup.position.clone().sub(enemy.position).normalize(); // Baby cubes now move toward player
             }
             enemy.position.add(direction.multiplyScalar(enemy.speed));
             if (enemy.type === 'boss') {
@@ -530,10 +535,9 @@ function initGame(usePCUI) {
             if (nearestEnemy.enemy) {
                 const direction = nearestEnemy.enemy.position.clone().sub(ally.position).normalize();
                 ally.position.add(direction.multiplyScalar(0.08));
-                if (nearestEnemy.dist < 1) {
-                    let damage = 1;
-                    if (nearestEnemy.enemy.hitsRemaining > 1) damage = Math.min(nearestEnemy.enemy.hitsRemaining, Math.floor(nearestEnemy.enemy.hitsRemaining * 0.75));
-                    nearestEnemy.enemy.hitsRemaining -= damage;
+                ally.attackCooldown -= 0.016;
+                if (nearestEnemy.dist < 1 && ally.attackCooldown <= 0) {
+                    nearestEnemy.enemy.hitsRemaining -= 2; // Ally does exactly 2 damage
                     if (nearestEnemy.enemy.healthBar) {
                         nearestEnemy.enemy.healthBar.scale.x = nearestEnemy.enemy.hitsRemaining / nearestEnemy.enemy.maxHits;
                         nearestEnemy.enemy.healthBar.position.x = -nearestEnemy.enemy.scale.x / 2 + (nearestEnemy.enemy.scale.x * nearestEnemy.enemy.healthBar.scale.x) / 2;
@@ -544,6 +548,7 @@ function initGame(usePCUI) {
                         scene.remove(nearestEnemy.enemy);
                         enemies = enemies.filter(e => e !== nearestEnemy.enemy);
                     }
+                    ally.attackCooldown = 1.5; // Reset cooldown to 1.5 seconds
                 }
             }
             ally.timer -= 0.016;
@@ -593,7 +598,7 @@ function initGame(usePCUI) {
     function saveScore(score) {
         leaderboard.push(score);
         leaderboard.sort((a, b) => b - a);
-        leaderboard = leaderboard.slice(0, 5);
+        leaderboard = leaderboard.slice(0, 5); // Keep top 5 scores
         localStorage.setItem('cubeDefenseLeaderboard', JSON.stringify(leaderboard));
         updateLeaderboardUI();
     }
@@ -618,7 +623,7 @@ function initGame(usePCUI) {
         if (Math.random() < 0.3) spawnEnemy('white');
         if (Math.random() < 0.2) spawnEnemy('magician');
         if (Math.random() < 0.4) spawnEnemy('baby');
-        waveTimer = 10;
+        waveTimer = 10; // Reset wave timer
         playerStats.wave++;
         document.getElementById('levelDisplay').textContent = `Level ${playerStats.wave - 1}`;
         showLevelDisplay();
@@ -638,7 +643,9 @@ function initGame(usePCUI) {
             }
             spawnTimer -= 0.016;
             waveTimer -= 0.016;
-            if (waveTimer <= 0 && enemies.length === 0 && enemiesToSpawn === 0) spawnWave();
+            if (waveTimer <= 0 && enemies.length === 0 && enemiesToSpawn === 0) {
+                spawnWave(); // Ensure new wave spawns when all enemies are cleared
+            }
             if (playerStats.weaponTimer <= 0 && playerStats.damage > 1) {
                 playerStats.damage = 1;
                 sword.scale.set(1, 1, 1);
