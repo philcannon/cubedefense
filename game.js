@@ -130,14 +130,6 @@ function initGame(usePCUI) {
         document.getElementById('restartWaveButton').appendChild(restartWaveButton);
     }
 
-    // Audio Setup - Disabled for now due to source errors
-    /*
-    const attackSound = document.getElementById('attackSound');
-    const deathSound = document.getElementById('deathSound');
-    const coinSound = document.getElementById('coinSound');
-    const waveSound = document.getElementById('waveSound');
-    */
-
     // Hotkey Listener
     document.addEventListener('keydown', (e) => {
         keys[e.key] = true;
@@ -466,7 +458,7 @@ function initGame(usePCUI) {
         const hitRange = playerStats.weaponTimer > 0 ? 4 : 3;
         for (let i = enemies.length - 1; i >= 0; i--) {
             const enemy = enemies[i];
-            if (!enemy || !enemy.children[0]) continue; // Skip invalid enemies
+            if (!enemy || !enemy.children[0]) continue;
             if (playerGroup.position.distanceTo(enemy.position) < hitRange) {
                 enemy.hitsRemaining -= damage;
                 if (enemy.healthBar) {
@@ -542,9 +534,6 @@ function initGame(usePCUI) {
                         direction = goldenPortal.position.clone().sub(enemy.position).normalize();
                     }
                 }
-                portals.forEach(portal => {
-                    if (portal.type === 'normal' && enemy.position.distanceTo(portal.position) < 2) return;
-                });
             } else {
                 direction = playerGroup.position.clone().sub(enemy.position).normalize();
             }
@@ -762,32 +751,40 @@ function initGame(usePCUI) {
     }
 
     function checkAchievements() {
+        let updated = false;
+
         if (playerStats.goldenCubeKills >= 10 && !achievements.goldenSlayer) {
             achievements.goldenSlayer = true;
-            alert('Achievement Unlocked: Golden Slayer!');
+            alert('Achievement Unlocked: Golden Slayer! (10 Golden Kills)');
+            updated = true;
         }
+
         if (playerStats.wave >= 20 && !achievements.waveMaster) {
             achievements.waveMaster = true;
-            alert('Achievement Unlocked: Wave Master!');
+            alert('Achievement Unlocked: Wave Master! (Reached Wave 20)');
+            updated = true;
         }
-        localStorage.setItem('cubeDefenseAchievements', JSON.stringify(achievements));
-        updateAchievementUI();
+
+        if (updated) {
+            localStorage.setItem('cubeDefenseAchievements', JSON.stringify(achievements));
+            updateAchievementUI();
+        }
     }
 
     function updateAchievementUI() {
         const list = document.getElementById('achievementList');
-        if (list) {
-            list.innerHTML = '';
-            if (achievements.goldenSlayer) {
-                const li = document.createElement('li');
-                li.textContent = 'Golden Slayer (10 Golden Kills)';
-                list.appendChild(li);
-            }
-            if (achievements.waveMaster) {
-                const li = document.createElement('li');
-                li.textContent = 'Wave Master (Wave 20)';
-                list.appendChild(li);
-            }
+        if (!list) return;
+
+        list.innerHTML = '';
+        if (achievements.goldenSlayer) {
+            const li = document.createElement('li');
+            li.textContent = 'Golden Slayer (10 Golden Kills)';
+            list.appendChild(li);
+        }
+        if (achievements.waveMaster) {
+            const li = document.createElement('li');
+            li.textContent = 'Wave Master (Reached Wave 20)';
+            list.appendChild(li);
         }
     }
 
