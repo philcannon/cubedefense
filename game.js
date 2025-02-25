@@ -80,7 +80,7 @@ function initGame(usePCUI) {
     };
     let hardMode = false;
     updateLeaderboardUI();
-    updateAchievementUI();
+    updateAchievementUI(); // Initial call to populate modal
 
     // UI Setup
     const shopContainer = document.getElementById('shop');
@@ -129,6 +129,26 @@ function initGame(usePCUI) {
         restartWaveButton.onclick = restartWave;
         document.getElementById('restartWaveButton').appendChild(restartWaveButton);
     }
+
+    // Achievements Modal Setup
+    const achievementsButton = document.getElementById('achievementsButton');
+    const achievementsModal = document.getElementById('achievementsModal');
+    const closeAchievements = document.getElementById('closeAchievements');
+
+    achievementsButton.onclick = function() {
+        achievementsModal.style.display = 'block';
+        updateAchievementUI(); // Refresh progress when opening
+    };
+
+    closeAchievements.onclick = function() {
+        achievementsModal.style.display = 'none';
+    };
+
+    window.onclick = function(event) {
+        if (event.target === achievementsModal) {
+            achievementsModal.style.display = 'none';
+        }
+    };
 
     // Hotkey Listener
     document.addEventListener('keydown', (e) => {
@@ -588,7 +608,7 @@ function initGame(usePCUI) {
                     enemy.attackCooldown = 0.5;
                 }
                 enemy.axe.rotation.x *= 0.9;
-            } else if (enemy.type === 'magician' || enemy.type === 'wizardKing') {
+            } else if (enemy.type === 'magician' || type === 'wizardKing') {
                 enemy.attackCooldown -= 0.016;
                 if (enemy.type === 'wizardKing') enemy.summonCooldown -= 0.016;
                 if (enemy.attackCooldown <= 0) {
@@ -772,20 +792,20 @@ function initGame(usePCUI) {
     }
 
     function updateAchievementUI() {
-        const list = document.getElementById('achievementList');
+        const list = document.getElementById('achievementProgressList');
         if (!list) return;
 
         list.innerHTML = '';
-        if (achievements.goldenSlayer) {
-            const li = document.createElement('li');
-            li.textContent = 'Golden Slayer (10 Golden Kills)';
-            list.appendChild(li);
-        }
-        if (achievements.waveMaster) {
-            const li = document.createElement('li');
-            li.textContent = 'Wave Master (Reached Wave 20)';
-            list.appendChild(li);
-        }
+
+        // Golden Slayer
+        const goldenLi = document.createElement('li');
+        goldenLi.textContent = `Golden Slayer: ${playerStats.goldenCubeKills}/10 Golden Kills ${achievements.goldenSlayer ? '(Unlocked)' : ''}`;
+        list.appendChild(goldenLi);
+
+        // Wave Master
+        const waveLi = document.createElement('li');
+        waveLi.textContent = `Wave Master: Wave ${playerStats.wave}/20 ${achievements.waveMaster ? '(Unlocked)' : ''}`;
+        list.appendChild(waveLi);
     }
 
     function spawnWave() {
