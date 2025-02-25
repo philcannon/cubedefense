@@ -10,8 +10,9 @@ function initGame(usePCUI) {
     // Scene Setup
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer();
+    const renderer = new THREE.WebGLRenderer({ antialias: true }); // Enable antialiasing for smoother visuals
     renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x87ceeb, 1); // Set a clear background color for visibility
     document.body.appendChild(renderer.domElement);
 
     // Player
@@ -80,7 +81,7 @@ function initGame(usePCUI) {
     };
     let hardMode = false;
     updateLeaderboardUI();
-    updateAchievementUI(); // Initial call to populate modal
+    updateAchievementUI();
 
     // UI Setup
     const shopContainer = document.getElementById('shop');
@@ -137,7 +138,7 @@ function initGame(usePCUI) {
 
     achievementsButton.onclick = function() {
         achievementsModal.style.display = 'block';
-        updateAchievementUI(); // Refresh progress when opening
+        updateAchievementUI();
     };
 
     closeAchievements.onclick = function() {
@@ -608,7 +609,7 @@ function initGame(usePCUI) {
                     enemy.attackCooldown = 0.5;
                 }
                 enemy.axe.rotation.x *= 0.9;
-            } else if (enemy.type === 'magician' || type === 'wizardKing') {
+            } else if (enemy.type === 'magician' || enemy.type === 'wizardKing') {
                 enemy.attackCooldown -= 0.016;
                 if (enemy.type === 'wizardKing') enemy.summonCooldown -= 0.016;
                 if (enemy.attackCooldown <= 0) {
@@ -797,12 +798,10 @@ function initGame(usePCUI) {
 
         list.innerHTML = '';
 
-        // Golden Slayer
         const goldenLi = document.createElement('li');
         goldenLi.textContent = `Golden Slayer: ${playerStats.goldenCubeKills}/10 Golden Kills ${achievements.goldenSlayer ? '(Unlocked)' : ''}`;
         list.appendChild(goldenLi);
 
-        // Wave Master
         const waveLi = document.createElement('li');
         waveLi.textContent = `Wave Master: Wave ${playerStats.wave}/20 ${achievements.waveMaster ? '(Unlocked)' : ''}`;
         list.appendChild(waveLi);
@@ -857,6 +856,8 @@ function initGame(usePCUI) {
         renderer.render(scene, camera);
     }
 
+    // Initial render to ensure visibility
+    renderer.render(scene, camera);
     createPortal();
     createPortal();
     spawnWave();
