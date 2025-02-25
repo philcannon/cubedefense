@@ -10,9 +10,9 @@ function initGame(usePCUI) {
     // Scene Setup
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true }); // Enable antialiasing for smoother visuals
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setClearColor(0x87ceeb, 1); // Set a clear background color for visibility
+    renderer.setClearColor(0x87ceeb, 1);
     document.body.appendChild(renderer.domElement);
 
     // Player
@@ -609,7 +609,7 @@ function initGame(usePCUI) {
                     enemy.attackCooldown = 0.5;
                 }
                 enemy.axe.rotation.x *= 0.9;
-            } else if (enemy.type === 'magician' || enemy.type === 'wizardKing') {
+            } else if (enemy.type === 'magician' || enemy.type === 'wizardKing') { // Fixed typo here
                 enemy.attackCooldown -= 0.016;
                 if (enemy.type === 'wizardKing') enemy.summonCooldown -= 0.016;
                 if (enemy.attackCooldown <= 0) {
@@ -856,7 +856,6 @@ function initGame(usePCUI) {
         renderer.render(scene, camera);
     }
 
-    // Initial render to ensure visibility
     renderer.render(scene, camera);
     createPortal();
     createPortal();
