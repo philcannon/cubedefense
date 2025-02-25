@@ -609,7 +609,7 @@ function initGame(usePCUI) {
                     enemy.attackCooldown = 0.5;
                 }
                 enemy.axe.rotation.x *= 0.9;
-            } else if (enemy.type === 'magician' || enemy.type === 'wizardKing') { // Fixed typo here
+            } else if (enemy.type === 'magician' || enemy.type === 'wizardKing') {
                 enemy.attackCooldown -= 0.016;
                 if (enemy.type === 'wizardKing') enemy.summonCooldown -= 0.016;
                 if (enemy.attackCooldown <= 0) {
