@@ -235,6 +235,9 @@ function initGame(usePCUI) {
         dayNightCycle = 0;
         inventory = [];
         equipped = { weapon: legendaryItems.weapon || null, helm: legendaryItems.helm || null, armor: legendaryItems.armor || null };
+        // Reset visuals to unequipped state, then apply legendary items
+        playerGroup.children = [player];
+        playerGroup.add(sword);
         updatePlayerVisuals();
         updatePlayerStats();
         createPortal();
@@ -339,6 +342,7 @@ function initGame(usePCUI) {
             enemyGroup.attackCooldown = 0;
             if (type === 'wizardKing') {
                 enemyGroup.summonCooldown = 0;
+                enemyGroup.stunCooldown = 0;
                 const shield = new THREE.Mesh(new THREE.SphereGeometry(size * 0.6, 16, 16), new THREE.MeshPhongMaterial({ color: 0x00ffff, transparent: true, opacity: 0.3 }));
                 shield.position.y = size / 2;
                 enemyGroup.add(shield);
@@ -428,18 +432,23 @@ function initGame(usePCUI) {
     }
 
     function spawnProjectile(position, direction, type = 'normal') {
-        let geometry, material, damage = 1;
+        let geometry, material, damage = 1, stun = false;
         if (type === 'card') {
             geometry = new THREE.PlaneGeometry(0.3, 0.5);
-            material = new THREE.MeshPhongMaterial({ color: 0x87ceeb, shininess: 50 }); // Light blue
+            material = new THREE.MeshPhongMaterial({ color: 0x87ceeb, shininess: 50 });
             damage = 3;
         } else if (type === 'laser') {
             geometry = new THREE.BoxGeometry(0.1, 0.1, 10);
-            material = new THREE.MeshPhongMaterial({ color: 0x87ceeb, shininess: 50 }); // Light blue
+            material = new THREE.MeshPhongMaterial({ color: 0x87ceeb, shininess: 50 });
             damage = 5;
+        } else if (type === 'stun') {
+            geometry = new THREE.SphereGeometry(0.3, 16, 16);
+            material = new THREE.MeshPhongMaterial({ color: 0x800080, shininess: 50 });
+            damage = 0;
+            stun = true;
         } else {
             geometry = new THREE.BoxGeometry(0.3, 0.02, 0.5);
-            material = new THREE.MeshPhongMaterial({ color: 0x87ceeb, shininess: 50 }); // Light blue
+            material = new THREE.MeshPhongMaterial({ color: 0x87ceeb, shininess: 50 });
         }
         const projectile = new THREE.Mesh(geometry, material);
         projectile.position.copy(position);
@@ -447,6 +456,7 @@ function initGame(usePCUI) {
         projectile.direction = direction;
         projectile.speed = type === 'laser' ? 0 : 0.1;
         projectile.damage = damage;
+        projectile.stun = stun;
         if (type === 'laser') {
             projectile.lookAt(position.clone().add(direction));
             projectile.timer = 5;
@@ -538,9 +548,9 @@ function initGame(usePCUI) {
         if (keys[' '] && playerStats.attackCooldown <= 0) {
             attack();
             playerStats.attackCooldown = 0.5;
-            sword.rotation.x = Math.PI / 4;
+            if (playerGroup.children.includes(sword)) sword.rotation.x = Math.PI / 4;
         }
-        sword.rotation.x *= 0.9;
+        if (playerGroup.children.includes(sword)) sword.rotation.x *= 0.9;
 
         for (let i = coins.length - 1; i >= 0; i--) {
             if (playerGroup.position.distanceTo(coins[i].position) < 1) {
@@ -611,8 +621,14 @@ function initGame(usePCUI) {
         const damage = equipped.weapon ? equipped.weapon.damage : playerStats.damage;
         const hitRange = playerStats.weaponTimer > 0 ? 4 : 3;
         if (equipped.weapon && equipped.weapon.name === 'Poker Cards') {
-            const direction = new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5).normalize();
-            spawnProjectile(playerGroup.position, direction, 'card');
+            const nearestEnemy = enemies.reduce((closest, enemy) => {
+                const dist = playerGroup.position.distanceTo(enemy.position);
+                return dist < closest.dist ? { enemy, dist } : closest;
+            }, { enemy: null, dist: Infinity });
+            if (nearestEnemy.enemy) {
+                const direction = nearestEnemy.enemy.position.clone().sub(playerGroup.position).normalize();
+                spawnProjectile(playerGroup.position, direction, 'card');
+            }
         } else if (equipped.weapon && equipped.weapon.name === 'Wizard Staff') {
             const direction = new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5).normalize();
             spawnProjectile(playerGroup.position, direction);
@@ -766,7 +782,10 @@ function initGame(usePCUI) {
                 enemy.axe.rotation.x *= 0.9;
             } else if (enemy.type === 'magician' || enemy.type === 'wizardKing') {
                 enemy.attackCooldown -= 0.016;
-                if (enemy.type === 'wizardKing') enemy.summonCooldown -= 0.016;
+                if (enemy.type === 'wizardKing') {
+                    enemy.summonCooldown -= 0.016;
+                    enemy.stunCooldown -= 0.016;
+                }
                 if (enemy.attackCooldown <= 0) {
                     const projDirection = playerGroup.position.clone().sub(enemy.position).normalize();
                     spawnProjectile(enemy.position, projDirection);
@@ -778,6 +797,11 @@ function initGame(usePCUI) {
                         spawnProjectile(enemy.position, projDirection);
                     }
                     enemy.summonCooldown = 15;
+                }
+                if (enemy.type === 'wizardKing' && enemy.stunCooldown <= 0) {
+                    const projDirection = playerGroup.position.clone().sub(enemy.position).normalize();
+                    spawnProjectile(enemy.position, projDirection, 'stun');
+                    enemy.stunCooldown = 5;
                 }
             } else if (enemy.type === 'knight') {
                 enemy.chargeCooldown -= 0.016;
@@ -863,6 +887,7 @@ function initGame(usePCUI) {
             }
             if (playerGroup.position.distanceTo(proj.position) < 1 && !proj.type) {
                 playerStats.health -= 1;
+                if (proj.stun) playerStats.stunTimer = 2;
                 scene.remove(proj);
                 projectiles.splice(i, 1);
                 updateUI();
@@ -928,12 +953,11 @@ function initGame(usePCUI) {
             playerStats.coins -= 30;
         } else if (type === 'speed' && playerStats.coins >= 40 && playerStats.speedTimer <= 0) {
             playerStats.speedTimer = 10;
-            playerStats.coins -= 50;
-            for (let i = 0; i < 3; i++) createArmorBubble();
+            playerStats.coins -= 40;
         } else if (type === 'weapon' && playerStats.coins >= 60 && playerStats.weaponTimer <= 0) {
             playerStats.weaponTimer = 15;
             playerStats.damage = 3;
-            sword.scale.set(1.5, 1.5, 1.5);
+            if (playerGroup.children.includes(sword)) sword.scale.set(1.5, 1.5, 1.5);
             playerStats.coins -= 60;
         } else if (type === 'ally' && playerStats.coins >= 30) {
             spawnAlly();
@@ -1014,9 +1038,7 @@ function initGame(usePCUI) {
     }
 
     function updatePlayerVisuals() {
-        playerGroup.children.forEach(child => {
-            if (child !== player) scene.remove(child);
-        });
+        playerGroup.children = [player];
         if (equipped.weapon) {
             let weapon;
             if (equipped.weapon.name === 'Iron Sword') {
@@ -1034,6 +1056,9 @@ function initGame(usePCUI) {
                 weapon.position.set(0.6, 0, 0.5);
                 playerGroup.add(weapon);
             }
+        } else {
+            sword.position.set(0.6, 0, 0.5);
+            playerGroup.add(sword);
         }
         if (equipped.helm) {
             let helm;
@@ -1161,7 +1186,7 @@ function initGame(usePCUI) {
             }
             if (playerStats.weaponTimer <= 0 && !equipped.weapon && playerStats.damage > 1) {
                 playerStats.damage = 1;
-                sword.scale.set(1, 1, 1);
+                if (playerGroup.children.includes(sword)) sword.scale.set(1, 1, 1);
             }
         }
         renderer.render(scene, camera);
