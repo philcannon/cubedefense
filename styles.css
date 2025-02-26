@@ -9,7 +9,7 @@ canvas {
     position: absolute;
     top: 0;
     left: 0;
-    z-index: 0; /* Ensure canvas is behind UI elements */
+    z-index: 0;
 }
 #ui {
     position: absolute;
@@ -19,7 +19,7 @@ canvas {
     font-family: Arial, sans-serif;
     background: rgba(0, 0, 0, 0.5);
     padding: 5px;
-    z-index: 1; /* Above canvas */
+    z-index: 1;
 }
 #shop {
     position: absolute;
@@ -65,10 +65,25 @@ canvas {
 #achievementsButton:hover {
     background: rgba(50, 50, 50, 0.9);
 }
+#inventoryButton {
+    position: absolute;
+    bottom: 50px;
+    right: 10px;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    border: none;
+    padding: 10px;
+    font-family: Arial, sans-serif;
+    cursor: pointer;
+    z-index: 1;
+}
+#inventoryButton:hover {
+    background: rgba(50, 50, 50, 0.9);
+}
 .modal {
     display: none;
     position: fixed;
-    z-index: 3; /* Above everything else */
+    z-index: 3;
     left: 0;
     top: 0;
     width: 100%;
@@ -97,6 +112,12 @@ canvas {
 .close:focus {
     color: white;
     text-decoration: none;
+}
+#inventorySlots {
+    margin-bottom: 10px;
+}
+#inventorySlots div {
+    margin: 5px 0;
 }
 #pauseButton {
     position: absolute;
