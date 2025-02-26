@@ -56,7 +56,7 @@ function initGame(usePCUI) {
     let playerStats = {
         health: 100, maxHealth: 100, coins: 0, kills: 0, baseSpeed: 0.15, speed: 0.15, damage: 1, armor: 0,
         attackCooldown: 0, stunTimer: 0, speedTimer: 0, armorTimer: 0, weaponTimer: 0, wave: 1, whiteCubeKills: 0,
-        goldenCubeKills: 0, regenTimer: 0, hasRadar: false
+        goldenCubeKills: 0, regenTimer: 0, hasRadar: false, staffCooldown: 0, staffActive: 0
     };
     let enemies = [];
     let portals = [];
@@ -79,7 +79,6 @@ function initGame(usePCUI) {
     };
     let hardMode = false;
 
-    // Inventory Setup
     let inventory = [];
     let equipped = { weapon: null, helm: null, armor: null };
     updateInventoryUI();
@@ -131,7 +130,6 @@ function initGame(usePCUI) {
         document.getElementById('restartWaveButton').appendChild(restartWaveButton);
     }
 
-    // Achievements Modal Setup
     const achievementsButton = document.getElementById('achievementsButton');
     const achievementsModal = document.getElementById('achievementsModal');
     const closeAchievements = document.getElementById('closeAchievements');
@@ -149,7 +147,6 @@ function initGame(usePCUI) {
         }
     };
 
-    // Inventory Modal Setup
     const inventoryButton = document.getElementById('inventoryButton');
     const inventoryModal = document.getElementById('inventoryModal');
     const closeInventory = document.getElementById('closeInventory');
@@ -181,6 +178,15 @@ function initGame(usePCUI) {
                 spawnAlly('orange');
             }
         }
+        if (e.key === 'f' && equipped.weapon) {
+            if (equipped.weapon.name === 'Poker Cards') {
+                const direction = new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5).normalize();
+                spawnProjectile(playerGroup.position, direction, 'card');
+            } else if (equipped.weapon.name === 'Wizard Staff' && playerStats.staffCooldown <= 0) {
+                playerStats.staffActive = 5;
+                playerStats.staffCooldown = 8;
+            }
+        }
         const hotkeyIndex = hotkeys.indexOf(e.key.toLowerCase());
         if (hotkeyIndex !== -1) buyUpgrade(upgrades[hotkeyIndex].type);
     });
@@ -197,10 +203,16 @@ function initGame(usePCUI) {
 
     function resetGame() {
         saveScore(playerStats.kills);
+        const legendaryItems = {};
+        for (const slot in equipped) {
+            if (equipped[slot] && equipped[slot].rarity === 'legendary') {
+                legendaryItems[slot] = equipped[slot];
+            }
+        }
         playerStats = {
             health: 100, maxHealth: 100, coins: 0, kills: 0, baseSpeed: 0.15, speed: 0.15, damage: 1, armor: 0,
             attackCooldown: 0, stunTimer: 0, speedTimer: 0, armorTimer: 0, weaponTimer: 0, wave: 1, whiteCubeKills: 0,
-            goldenCubeKills: 0, regenTimer: 0, hasRadar: playerStats.hasRadar
+            goldenCubeKills: 0, regenTimer: 0, hasRadar: playerStats.hasRadar, staffCooldown: 0, staffActive: 0
         };
         playerGroup.position.set(0, 0.5, 0);
         enemies.forEach(enemy => scene.remove(enemy));
@@ -224,8 +236,9 @@ function initGame(usePCUI) {
         goldenCubeExists = false;
         dayNightCycle = 0;
         inventory = [];
-        equipped = { weapon: null, helm: null, armor: null };
+        equipped = { weapon: legendaryItems.weapon || null, helm: legendaryItems.helm || null, armor: legendaryItems.armor || null };
         updatePlayerVisuals();
+        updatePlayerStats();
         createPortal();
         createPortal();
         updateUI();
@@ -279,10 +292,10 @@ function initGame(usePCUI) {
         else if (type === 'baby') { size = 0.5; color = 0xff69b4; hits = 3; speed = 0.15; damage = 0.5; }
         else if (type === 'stealth') { size = 1; color = 0x666666; hits = 5; speed = 0.06; damage = 1; stealth = true; }
         else if (type === 'explosive') { size = 1.2; color = 0xff4500; hits = 10; speed = 0.04; damage = 1; explosive = true; }
-        else if (type === 'wizardKing') { size = 2; color = 0x4b0082; hits = 15; speed = 0.03; damage = 2; } // King Cube: 15 hits
-        else if (type === 'knight') { size = 1.2; color = 0x808080; hits = 7; speed = 0.1; damage = 10; } // Knight Cube
-        else if (type === 'bodyguard') { size = 1; color = 0x333333; hits = 3; speed = 0.03; damage = 5; } // Bodyguard Cube
-        else if (type === 'philip') { size = 1.2; color = 0x4a2c2a; hits = 10; speed = 0.05; damage = 7; } // Philip Cube
+        else if (type === 'wizardKing') { size = 2; color = 0x4b0082; hits = 15; speed = 0.03; damage = 2; }
+        else if (type === 'knight') { size = 1.2; color = 0x808080; hits = 7; speed = 0.1; damage = 10; }
+        else if (type === 'bodyguard') { size = 1; color = 0x333333; hits = 3; speed = 0.03; damage = 5; }
+        else if (type === 'philip') { size = 1.2; color = 0x4a2c2a; hits = 10; speed = 0.05; damage = 7; }
         else { size = 1; color = 0xff0000; hits = 1; speed = 0.03; damage = 1; }
 
         if (playerStats.wave > 10) hits *= (1 + (playerStats.wave - 10) * 0.05);
@@ -383,8 +396,8 @@ function initGame(usePCUI) {
 
     function spawnAlly(type = 'normal') {
         let size, color, hits, damage, attackSpeed;
-        if (type === 'orange') { size = 1; color = 0xffa500; hits = 7; damage = 3; attackSpeed = 0.3; } // Crown ally
-        else { size = 0.8; color = 0x0000ff; hits = 7; damage = 2; attackSpeed = 1.5; } // Default ally
+        if (type === 'orange') { size = 1; color = 0xffa500; hits = 7; damage = 3; attackSpeed = 0.3; }
+        else { size = 0.8; color = 0x0000ff; hits = 7; damage = 2; attackSpeed = 1.5; }
         const ally = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), new THREE.MeshPhongMaterial({ color, shininess: 100, specular: 0xffffff }));
         ally.position.copy(playerGroup.position);
         ally.timer = 7;
@@ -399,11 +412,9 @@ function initGame(usePCUI) {
         ally.maxTimer = 7;
         ally.damage = damage;
         ally.attackSpeed = attackSpeed;
-        if (type === 'orange') {
-            const sword = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 1.5), new THREE.MeshPhongMaterial({ color: 0xaaaaaa }));
-            sword.position.set(0.5, 0, 0.5);
-            ally.add(sword);
-        }
+        const sword = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 1.5), new THREE.MeshPhongMaterial({ color: 0xaaaaaa }));
+        sword.position.set(0.5, 0, 0.5);
+        ally.add(sword);
         scene.add(ally);
         allies.push(ally);
     }
@@ -418,12 +429,30 @@ function initGame(usePCUI) {
         if (!goldenCubeExists && Math.random() < 0.05) spawnEnemy('golden');
     }
 
-    function spawnProjectile(position, direction) {
-        const projectile = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.02, 0.5), new THREE.MeshPhongMaterial({ color: 0xff0000, shininess: 50 }));
+    function spawnProjectile(position, direction, type = 'normal') {
+        let geometry, material, damage = 1;
+        if (type === 'card') {
+            geometry = new THREE.PlaneGeometry(0.3, 0.5);
+            material = new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 50 });
+            damage = 3;
+        } else if (type === 'laser') {
+            geometry = new THREE.BoxGeometry(0.1, 0.1, 10);
+            material = new THREE.MeshPhongMaterial({ color: 0xff00ff, shininess: 50 });
+            damage = 5;
+        } else {
+            geometry = new THREE.BoxGeometry(0.3, 0.02, 0.5);
+            material = new THREE.MeshPhongMaterial({ color: 0xff0000, shininess: 50 });
+        }
+        const projectile = new THREE.Mesh(geometry, material);
         projectile.position.copy(position);
         projectile.position.y = 0.5;
         projectile.direction = direction;
-        projectile.speed = 0.1;
+        projectile.speed = type === 'laser' ? 0 : 0.1;
+        projectile.damage = damage;
+        if (type === 'laser') {
+            projectile.lookAt(position.clone().add(direction));
+            projectile.timer = 5;
+        }
         scene.add(projectile);
         projectiles.push(projectile);
     }
@@ -469,6 +498,8 @@ function initGame(usePCUI) {
             { type: 'weapon', name: 'Iron Sword', rarity: 'normal', damage: 2 },
             { type: 'weapon', name: 'Golden Blade', rarity: 'unique', damage: 4 },
             { type: 'weapon', name: 'Dragon Slayer', rarity: 'legendary', damage: 6 },
+            { type: 'weapon', name: 'Poker Cards', rarity: 'unique', damage: 3, special: 'projectile' },
+            { type: 'weapon', name: 'Wizard Staff', rarity: 'legendary', damage: 5, special: 'laser' },
             { type: 'helm', name: 'Leather Cap', rarity: 'normal', bonus: 10 },
             { type: 'helm', name: 'Wizard Hat', rarity: 'unique', bonus: 0, special: 'teleport' },
             { type: 'helm', name: 'King Crown', rarity: 'legendary', bonus: 0, special: 'summon' },
@@ -535,6 +566,12 @@ function initGame(usePCUI) {
         playerStats.speedTimer = Math.max(0, playerStats.speedTimer - 0.016);
         playerStats.armorTimer = Math.max(0, playerStats.armorTimer - 0.016);
         playerStats.weaponTimer = Math.max(0, playerStats.weaponTimer - 0.016);
+        playerStats.staffCooldown = Math.max(0, playerStats.staffCooldown - 0.016);
+        if (playerStats.staffActive > 0) {
+            playerStats.staffActive -= 0.016;
+            const direction = new THREE.Vector3(Math.cos(Date.now() * 0.001), 0, Math.sin(Date.now() * 0.001)).normalize();
+            spawnProjectile(playerGroup.position, direction, 'laser');
+        }
         if (playerStats.speedTimer > 0 && Math.random() < 0.3) createTrailParticle();
         if (playerStats.armorTimer <= 0 && armorBubbles.length > 0) {
             armorBubbles.forEach(b => scene.remove(b));
@@ -588,11 +625,11 @@ function initGame(usePCUI) {
                     createDeathParticles(enemy.position, enemy.children[0].material.color.getHex());
                     if (Math.random() < 0.1) spawnLootDrop(enemy.position);
                     if (enemy.type === 'magician' && Math.random() < 0.2) {
-                        inventory.push({ type: 'helm', name: 'Wizard Hat', rarity: 'unique', bonus: 0, special: 'teleport' });
+                        inventory.push({ type: 'weapon', name: 'Poker Cards', rarity: 'unique', damage: 3, special: 'projectile' });
                         updateInventoryUI();
                     }
                     if (enemy.type === 'wizardKing' && Math.random() < 0.2) {
-                        inventory.push({ type: 'helm', name: 'King Crown', rarity: 'legendary', bonus: 0, special: 'summon' });
+                        inventory.push({ type: 'weapon', name: 'Wizard Staff', rarity: 'legendary', damage: 5, special: 'laser' });
                         updateInventoryUI();
                     }
                     if (enemy.type === 'bodyguard' && Math.random() < 0.05) spawnEnemy('philip');
@@ -783,12 +820,42 @@ function initGame(usePCUI) {
         for (let i = projectiles.length - 1; i >= 0; i--) {
             const proj = projectiles[i];
             proj.position.add(proj.direction.clone().multiplyScalar(proj.speed));
+            if (proj.timer) {
+                proj.timer -= 0.016;
+                if (proj.timer <= 0) {
+                    scene.remove(proj);
+                    projectiles.splice(i, 1);
+                    continue;
+                }
+            }
+            for (let j = enemies.length - 1; j >= 0; j--) {
+                if (proj.position.distanceTo(enemies[j].position) < 1) {
+                    enemies[j].hitsRemaining -= proj.damage;
+                    if (enemies[j].healthBar) {
+                        enemies[j].healthBar.scale.x = enemies[j].hitsRemaining / enemies[j].maxHits;
+                        enemies[j].healthBar.position.x = -enemies[j].scale.x / 2 + (enemies[j].scale.x * enemies[j].healthBar.scale.x) / 2;
+                    }
+                    if (enemies[j].hitsRemaining <= 0) {
+                        spawnCoin(enemies[j].position);
+                        createDeathParticles(enemies[j].position, enemies[j].children[0].material.color.getHex());
+                        if (Math.random() < 0.1) spawnLootDrop(enemies[j].position);
+                        scene.remove(enemies[j]);
+                        enemies.splice(j, 1);
+                        playerStats.kills++;
+                    }
+                    if (proj.type !== 'laser') {
+                        scene.remove(proj);
+                        projectiles.splice(i, 1);
+                    }
+                    break;
+                }
+            }
             if (playerGroup.position.distanceTo(proj.position) < 1) {
                 playerStats.health -= 1;
                 scene.remove(proj);
                 projectiles.splice(i, 1);
                 updateUI();
-            } else if (proj.position.distanceTo(playerGroup.position) > 20) {
+            } else if (proj.position.distanceTo(playerGroup.position) > 20 && !proj.timer) {
                 scene.remove(proj);
                 projectiles.splice(i, 1);
             }
@@ -930,15 +997,52 @@ function initGame(usePCUI) {
             if (child !== player && child !== sword) scene.remove(child);
         });
         if (equipped.weapon) {
-            sword.material.color.setHex(equipped.weapon.rarity === 'normal' ? 0xaaaaaa : equipped.weapon.rarity === 'unique' ? 0xffd700 : 0xff0000);
+            if (equipped.weapon.name === 'Iron Sword') {
+                sword.geometry = new THREE.BoxGeometry(0.2, 0.2, 2.5);
+                sword.material.color.setHex(0xaaaaaa);
+            } else if (equipped.weapon.name === 'Golden Blade') {
+                sword.geometry = new THREE.BoxGeometry(0.2, 0.2, 2.5);
+                sword.material.color.setHex(0xffd700);
+            } else if (equipped.weapon.name === 'Dragon Slayer') {
+                sword.geometry = new THREE.BoxGeometry(0.3, 0.3, 3);
+                sword.material.color.setHex(0xff0000);
+            } else if (equipped.weapon.name === 'Poker Cards') {
+                scene.remove(sword);
+                const cards = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.5), new THREE.MeshPhongMaterial({ color: 0xffffff }));
+                cards.position.set(0.6, 0, 0.5);
+                playerGroup.add(cards);
+            } else if (equipped.weapon.name === 'Wizard Staff') {
+                scene.remove(sword);
+                const staff = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 2, 16), new THREE.MeshPhongMaterial({ color: 0x800080 }));
+                staff.position.set(0.6, 0, 0.5);
+                playerGroup.add(staff);
+            }
+        } else {
+            sword.geometry = new THREE.BoxGeometry(0.2, 0.2, 2.5);
+            sword.material.color.setHex(0xaaaaaa);
+            if (!playerGroup.children.includes(sword)) playerGroup.add(sword);
         }
         if (equipped.helm) {
-            const helm = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.3, 32), new THREE.MeshPhongMaterial({ color: equipped.helm.rarity === 'normal' ? 0x8b4513 : equipped.helm.rarity === 'unique' ? 0x000000 : 0xffff00 }));
+            let helm;
+            if (equipped.helm.name === 'Leather Cap') {
+                helm = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.3, 32), new THREE.MeshPhongMaterial({ color: 0x8b4513 }));
+            } else if (equipped.helm.name === 'Wizard Hat') {
+                helm = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.3, 32), new THREE.MeshPhongMaterial({ color: 0x000000 }));
+            } else if (equipped.helm.name === 'King Crown') {
+                helm = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 0.5), new THREE.MeshPhongMaterial({ color: 0xffff00 }));
+            }
             helm.position.y = 0.65;
             playerGroup.add(helm);
         }
         if (equipped.armor) {
-            const armor = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.8, 0.9), new THREE.MeshPhongMaterial({ color: equipped.armor.rarity === 'normal' ? 0x808080 : equipped.armor.rarity === 'unique' ? 0x00ffff : 0xff4500 }));
+            let armor;
+            if (equipped.armor.name === 'Chain Mail') {
+                armor = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.8, 0.9), new THREE.MeshPhongMaterial({ color: 0x808080 }));
+            } else if (equipped.armor.name === 'Mystic Robe') {
+                armor = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.8, 0.9), new THREE.MeshPhongMaterial({ color: 0x00ffff }));
+            } else if (equipped.armor.name === 'Dragon Scale') {
+                armor = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.8, 0.9), new THREE.MeshPhongMaterial({ color: 0xff4500 }));
+            }
             playerGroup.add(armor);
         }
     }
@@ -1006,7 +1110,7 @@ function initGame(usePCUI) {
             createPortal('boss');
             spawnEnemy('boss');
         }
-        if (Math.random() < 0.3) spawnEnemy('white');
+        if (Math.random() < 0.1) spawnEnemy('white'); // Reduced from 0.3 to 0.1
         if (Math.random() < 0.2) spawnEnemy('magician');
         if (Math.random() < 0.4) spawnEnemy('baby');
         if (playerStats.wave > 5 && Math.random() < 0.2) spawnEnemy('stealth');
