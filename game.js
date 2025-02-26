@@ -56,7 +56,7 @@ function initGame(usePCUI) {
     let playerStats = {
         health: 100, maxHealth: 100, coins: 0, kills: 0, baseSpeed: 0.15, speed: 0.15, damage: 1, armor: 0,
         attackCooldown: 0, stunTimer: 0, speedTimer: 0, armorTimer: 0, weaponTimer: 0, wave: 1, whiteCubeKills: 0,
-        goldenCubeKills: 0, regenTimer: 0, hasRadar: false, staffCooldown: 0, staffActive: 0
+        goldenCubeKills: 0, regenTimer: 0, hasRadar: false, staffCooldown: 0, staffActive: 0, crownCooldown: 0
     };
     let enemies = [];
     let portals = [];
@@ -166,7 +166,9 @@ function initGame(usePCUI) {
 
     document.addEventListener('keydown', (e) => {
         keys[e.key] = true;
-        if (e.key === 'Escape') togglePause();
+        if (e.key === 'Escape') {
+            togglePause();
+        }
         if (e.key === 'z' || e.key === 'Z') {
             inventoryModal.style.display = inventoryModal.style.display === 'block' ? 'none' : 'block';
             updateInventoryUI();
@@ -174,18 +176,14 @@ function initGame(usePCUI) {
         if (e.key === 'f' && equipped.helm) {
             if (equipped.helm.name === 'Wizard Hat') {
                 playerGroup.position.set((Math.random() - 0.5) * 45, 0.5, (Math.random() - 0.5) * 25);
-            } else if (equipped.helm.name === 'King Crown') {
+            } else if (equipped.helm.name === 'King Crown' && playerStats.crownCooldown <= 0) {
                 spawnAlly('orange');
+                playerStats.crownCooldown = 5;
             }
         }
-        if (e.key === 'f' && equipped.weapon) {
-            if (equipped.weapon.name === 'Poker Cards') {
-                const direction = new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5).normalize();
-                spawnProjectile(playerGroup.position, direction, 'card');
-            } else if (equipped.weapon.name === 'Wizard Staff' && playerStats.staffCooldown <= 0) {
-                playerStats.staffActive = 5;
-                playerStats.staffCooldown = 8;
-            }
+        if (e.key === 'f' && equipped.weapon && equipped.weapon.name === 'Wizard Staff' && playerStats.staffCooldown <= 0) {
+            playerStats.staffActive = 5;
+            playerStats.staffCooldown = 8;
         }
         const hotkeyIndex = hotkeys.indexOf(e.key.toLowerCase());
         if (hotkeyIndex !== -1) buyUpgrade(upgrades[hotkeyIndex].type);
@@ -212,7 +210,7 @@ function initGame(usePCUI) {
         playerStats = {
             health: 100, maxHealth: 100, coins: 0, kills: 0, baseSpeed: 0.15, speed: 0.15, damage: 1, armor: 0,
             attackCooldown: 0, stunTimer: 0, speedTimer: 0, armorTimer: 0, weaponTimer: 0, wave: 1, whiteCubeKills: 0,
-            goldenCubeKills: 0, regenTimer: 0, hasRadar: playerStats.hasRadar, staffCooldown: 0, staffActive: 0
+            goldenCubeKills: 0, regenTimer: 0, hasRadar: playerStats.hasRadar, staffCooldown: 0, staffActive: 0, crownCooldown: 0
         };
         playerGroup.position.set(0, 0.5, 0);
         enemies.forEach(enemy => scene.remove(enemy));
@@ -433,15 +431,15 @@ function initGame(usePCUI) {
         let geometry, material, damage = 1;
         if (type === 'card') {
             geometry = new THREE.PlaneGeometry(0.3, 0.5);
-            material = new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 50 });
+            material = new THREE.MeshPhongMaterial({ color: 0x87ceeb, shininess: 50 }); // Light blue
             damage = 3;
         } else if (type === 'laser') {
             geometry = new THREE.BoxGeometry(0.1, 0.1, 10);
-            material = new THREE.MeshPhongMaterial({ color: 0xff00ff, shininess: 50 });
+            material = new THREE.MeshPhongMaterial({ color: 0x87ceeb, shininess: 50 }); // Light blue
             damage = 5;
         } else {
             geometry = new THREE.BoxGeometry(0.3, 0.02, 0.5);
-            material = new THREE.MeshPhongMaterial({ color: 0xff0000, shininess: 50 });
+            material = new THREE.MeshPhongMaterial({ color: 0x87ceeb, shininess: 50 }); // Light blue
         }
         const projectile = new THREE.Mesh(geometry, material);
         projectile.position.copy(position);
@@ -567,6 +565,7 @@ function initGame(usePCUI) {
         playerStats.armorTimer = Math.max(0, playerStats.armorTimer - 0.016);
         playerStats.weaponTimer = Math.max(0, playerStats.weaponTimer - 0.016);
         playerStats.staffCooldown = Math.max(0, playerStats.staffCooldown - 0.016);
+        playerStats.crownCooldown = Math.max(0, playerStats.crownCooldown - 0.016);
         if (playerStats.staffActive > 0) {
             playerStats.staffActive -= 0.016;
             const direction = new THREE.Vector3(Math.cos(Date.now() * 0.001), 0, Math.sin(Date.now() * 0.001)).normalize();
@@ -611,63 +610,75 @@ function initGame(usePCUI) {
     function attack() {
         const damage = equipped.weapon ? equipped.weapon.damage : playerStats.damage;
         const hitRange = playerStats.weaponTimer > 0 ? 4 : 3;
-        for (let i = enemies.length - 1; i >= 0; i--) {
-            const enemy = enemies[i];
-            if (!enemy || !enemy.children[0]) continue;
-            if (playerGroup.position.distanceTo(enemy.position) < hitRange) {
-                enemy.hitsRemaining -= damage;
-                if (enemy.healthBar) {
-                    enemy.healthBar.scale.x = enemy.hitsRemaining / enemy.maxHits;
-                    enemy.healthBar.position.x = -enemy.scale.x / 2 + (enemy.scale.x * enemy.healthBar.scale.x) / 2;
-                }
-                if (enemy.hitsRemaining <= 0) {
-                    spawnCoin(enemy.position);
-                    createDeathParticles(enemy.position, enemy.children[0].material.color.getHex());
-                    if (Math.random() < 0.1) spawnLootDrop(enemy.position);
-                    if (enemy.type === 'magician' && Math.random() < 0.2) {
-                        inventory.push({ type: 'weapon', name: 'Poker Cards', rarity: 'unique', damage: 3, special: 'projectile' });
-                        updateInventoryUI();
+        if (equipped.weapon && equipped.weapon.name === 'Poker Cards') {
+            const direction = new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5).normalize();
+            spawnProjectile(playerGroup.position, direction, 'card');
+        } else if (equipped.weapon && equipped.weapon.name === 'Wizard Staff') {
+            const direction = new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5).normalize();
+            spawnProjectile(playerGroup.position, direction);
+        } else {
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const enemy = enemies[i];
+                if (!enemy || !enemy.children[0]) continue;
+                if (playerGroup.position.distanceTo(enemy.position) < hitRange) {
+                    enemy.hitsRemaining -= damage;
+                    if (enemy.healthBar) {
+                        enemy.healthBar.scale.x = enemy.hitsRemaining / enemy.maxHits;
+                        enemy.healthBar.position.x = -enemy.scale.x / 2 + (enemy.scale.x * enemy.healthBar.scale.x) / 2;
                     }
-                    if (enemy.type === 'wizardKing' && Math.random() < 0.2) {
-                        inventory.push({ type: 'weapon', name: 'Wizard Staff', rarity: 'legendary', damage: 5, special: 'laser' });
-                        updateInventoryUI();
-                    }
-                    if (enemy.type === 'bodyguard' && Math.random() < 0.05) spawnEnemy('philip');
-                    scene.remove(enemy);
-                    if (enemy.type === 'golden') {
-                        goldenCubeExists = false;
-                        playerStats.goldenCubeKills++;
-                        checkAchievements();
-                    }
-                    if (enemy.explosive) {
-                        for (let j = enemies.length - 1; j >= 0; j--) {
-                            if (enemies[j] !== enemy && enemies[j].children[0] && enemy.position.distanceTo(enemies[j].position) < 3) {
-                                enemies[j].hitsRemaining -= 5;
-                                if (enemies[j].hitsRemaining <= 0) {
-                                    spawnCoin(enemies[j].position);
-                                    createDeathParticles(enemies[j].position, enemies[j].children[0].material.color.getHex());
-                                    scene.remove(enemies[j]);
-                                    enemies.splice(j, 1);
-                                    playerStats.kills++;
+                    if (enemy.hitsRemaining <= 0) {
+                        spawnCoin(enemy.position);
+                        createDeathParticles(enemy.position, enemy.children[0].material.color.getHex());
+                        if (Math.random() < 0.1) spawnLootDrop(enemy.position);
+                        if (enemy.type === 'magician' && Math.random() < 0.2) {
+                            inventory.push({ type: 'weapon', name: 'Poker Cards', rarity: 'unique', damage: 3, special: 'projectile' });
+                            updateInventoryUI();
+                        }
+                        if (enemy.type === 'wizardKing' && Math.random() < 0.2) {
+                            inventory.push({ type: 'weapon', name: 'Wizard Staff', rarity: 'legendary', damage: 5, special: 'laser' });
+                            updateInventoryUI();
+                        }
+                        if (enemy.type === 'magician' && Math.random() < 0.2) {
+                            inventory.push({ type: 'helm', name: 'Wizard Hat', rarity: 'unique', bonus: 0, special: 'teleport' });
+                            updateInventoryUI();
+                        }
+                        if (enemy.type === 'bodyguard' && Math.random() < 0.05) spawnEnemy('philip');
+                        scene.remove(enemy);
+                        if (enemy.type === 'golden') {
+                            goldenCubeExists = false;
+                            playerStats.goldenCubeKills++;
+                            checkAchievements();
+                        }
+                        if (enemy.explosive) {
+                            for (let j = enemies.length - 1; j >= 0; j--) {
+                                if (enemies[j] !== enemy && enemies[j].children[0] && enemy.position.distanceTo(enemies[j].position) < 3) {
+                                    enemies[j].hitsRemaining -= 5;
+                                    if (enemies[j].hitsRemaining <= 0) {
+                                        spawnCoin(enemies[j].position);
+                                        createDeathParticles(enemies[j].position, enemies[j].children[0].material.color.getHex());
+                                        scene.remove(enemies[j]);
+                                        enemies.splice(j, 1);
+                                        playerStats.kills++;
+                                    }
                                 }
                             }
+                            if (enemy.position.distanceTo(playerGroup.position) < 3) playerStats.health -= 5;
                         }
-                        if (enemy.position.distanceTo(playerGroup.position) < 3) playerStats.health -= 5;
+                        enemies.splice(i, 1);
+                        playerStats.kills++;
+                        if (enemy.type === 'white') {
+                            playerStats.whiteCubeKills++;
+                            if (playerStats.whiteCubeKills % 5 === 0) spawnEnemy('whiteMiniBoss');
+                        }
+                        if (playerStats.wave >= 5 && playerStats.kills % 50 === 0) {
+                            createPortal('boss');
+                            spawnEnemy('boss');
+                        } else if (playerStats.kills % 75 === 0) {
+                            createPortal('boss');
+                            spawnEnemy('wizardKing');
+                        } else if (playerStats.kills % 10 === 0) spawnEnemy('strong');
+                        updateUI();
                     }
-                    enemies.splice(i, 1);
-                    playerStats.kills++;
-                    if (enemy.type === 'white') {
-                        playerStats.whiteCubeKills++;
-                        if (playerStats.whiteCubeKills % 5 === 0) spawnEnemy('whiteMiniBoss');
-                    }
-                    if (playerStats.wave >= 5 && playerStats.kills % 50 === 0) {
-                        createPortal('boss');
-                        spawnEnemy('boss');
-                    } else if (playerStats.kills % 75 === 0) {
-                        createPortal('boss');
-                        spawnEnemy('wizardKing');
-                    } else if (playerStats.kills % 10 === 0) spawnEnemy('strong');
-                    updateUI();
                 }
             }
         }
@@ -850,7 +861,7 @@ function initGame(usePCUI) {
                     break;
                 }
             }
-            if (playerGroup.position.distanceTo(proj.position) < 1) {
+            if (playerGroup.position.distanceTo(proj.position) < 1 && !proj.type) {
                 playerStats.health -= 1;
                 scene.remove(proj);
                 projectiles.splice(i, 1);
@@ -917,7 +928,8 @@ function initGame(usePCUI) {
             playerStats.coins -= 30;
         } else if (type === 'speed' && playerStats.coins >= 40 && playerStats.speedTimer <= 0) {
             playerStats.speedTimer = 10;
-            playerStats.coins -= 40;
+            playerStats.coins -= 50;
+            for (let i = 0; i < 3; i++) createArmorBubble();
         } else if (type === 'weapon' && playerStats.coins >= 60 && playerStats.weaponTimer <= 0) {
             playerStats.weaponTimer = 15;
             playerStats.damage = 3;
@@ -970,6 +982,10 @@ function initGame(usePCUI) {
             equipButton.textContent = 'Equip';
             equipButton.onclick = () => equipItem(index);
             li.appendChild(equipButton);
+            const discardButton = document.createElement('button');
+            discardButton.textContent = 'Discard';
+            discardButton.onclick = () => discardItem(index);
+            li.appendChild(discardButton);
             inventoryList.appendChild(li);
         });
         updatePlayerVisuals();
@@ -985,6 +1001,11 @@ function initGame(usePCUI) {
         }
     }
 
+    function discardItem(index) {
+        inventory.splice(index, 1);
+        updateInventoryUI();
+    }
+
     function updatePlayerStats() {
         playerStats.damage = equipped.weapon ? equipped.weapon.damage : 1;
         playerStats.armor = equipped.armor ? equipped.armor.armor : 0;
@@ -994,33 +1015,25 @@ function initGame(usePCUI) {
 
     function updatePlayerVisuals() {
         playerGroup.children.forEach(child => {
-            if (child !== player && child !== sword) scene.remove(child);
+            if (child !== player) scene.remove(child);
         });
         if (equipped.weapon) {
+            let weapon;
             if (equipped.weapon.name === 'Iron Sword') {
-                sword.geometry = new THREE.BoxGeometry(0.2, 0.2, 2.5);
-                sword.material.color.setHex(0xaaaaaa);
+                weapon = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 2.5), new THREE.MeshPhongMaterial({ color: 0xaaaaaa }));
             } else if (equipped.weapon.name === 'Golden Blade') {
-                sword.geometry = new THREE.BoxGeometry(0.2, 0.2, 2.5);
-                sword.material.color.setHex(0xffd700);
+                weapon = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 2.5), new THREE.MeshPhongMaterial({ color: 0xffd700 }));
             } else if (equipped.weapon.name === 'Dragon Slayer') {
-                sword.geometry = new THREE.BoxGeometry(0.3, 0.3, 3);
-                sword.material.color.setHex(0xff0000);
+                weapon = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 3), new THREE.MeshPhongMaterial({ color: 0xff0000 }));
             } else if (equipped.weapon.name === 'Poker Cards') {
-                scene.remove(sword);
-                const cards = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.5), new THREE.MeshPhongMaterial({ color: 0xffffff }));
-                cards.position.set(0.6, 0, 0.5);
-                playerGroup.add(cards);
+                weapon = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.5), new THREE.MeshPhongMaterial({ color: 0xffffff }));
             } else if (equipped.weapon.name === 'Wizard Staff') {
-                scene.remove(sword);
-                const staff = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 2, 16), new THREE.MeshPhongMaterial({ color: 0x800080 }));
-                staff.position.set(0.6, 0, 0.5);
-                playerGroup.add(staff);
+                weapon = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 2, 16), new THREE.MeshPhongMaterial({ color: 0x800080 }));
             }
-        } else {
-            sword.geometry = new THREE.BoxGeometry(0.2, 0.2, 2.5);
-            sword.material.color.setHex(0xaaaaaa);
-            if (!playerGroup.children.includes(sword)) playerGroup.add(sword);
+            if (weapon) {
+                weapon.position.set(0.6, 0, 0.5);
+                playerGroup.add(weapon);
+            }
         }
         if (equipped.helm) {
             let helm;
@@ -1110,7 +1123,7 @@ function initGame(usePCUI) {
             createPortal('boss');
             spawnEnemy('boss');
         }
-        if (Math.random() < 0.1) spawnEnemy('white'); // Reduced from 0.3 to 0.1
+        if (Math.random() < 0.1) spawnEnemy('white');
         if (Math.random() < 0.2) spawnEnemy('magician');
         if (Math.random() < 0.4) spawnEnemy('baby');
         if (playerStats.wave > 5 && Math.random() < 0.2) spawnEnemy('stealth');
