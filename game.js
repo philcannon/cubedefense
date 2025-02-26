@@ -7,7 +7,6 @@ window.addEventListener('load', () => {
 });
 
 function initGame(usePCUI) {
-    // Scene Setup
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -15,7 +14,6 @@ function initGame(usePCUI) {
     renderer.setClearColor(0x87ceeb, 1);
     document.body.appendChild(renderer.domElement);
 
-    // Player
     const playerGroup = new THREE.Group();
     const playerGeometry = new THREE.BoxGeometry(1, 1, 1);
     const playerMaterial = new THREE.MeshPhongMaterial({ color: 0x00ff00, shininess: 100, specular: 0xffffff });
@@ -55,7 +53,6 @@ function initGame(usePCUI) {
     ground.rotation.x = -Math.PI / 2;
     scene.add(ground);
 
-    // Game State
     let playerStats = {
         health: 100, maxHealth: 100, coins: 0, kills: 0, baseSpeed: 0.15, speed: 0.15, damage: 1, armor: 0,
         attackCooldown: 0, stunTimer: 0, speedTimer: 0, armorTimer: 0, weaponTimer: 0, wave: 1, whiteCubeKills: 0,
@@ -69,6 +66,7 @@ function initGame(usePCUI) {
     let armorBubbles = [];
     let projectiles = [];
     let traps = [];
+    let lootDrops = [];
     const keys = {};
     let isPaused = false;
     let waveTimer = 0;
@@ -80,10 +78,12 @@ function initGame(usePCUI) {
         goldenSlayer: false, waveMaster: false
     };
     let hardMode = false;
-    updateLeaderboardUI();
-    updateAchievementUI();
 
-    // UI Setup
+    // Inventory Setup
+    let inventory = [];
+    let equipped = { weapon: null, helm: null, armor: null };
+    updateInventoryUI();
+
     const shopContainer = document.getElementById('shop');
     const upgrades = [
         { type: 'armor', cost: 50, text: 'Armor (50 coins) [Q]' },
@@ -140,27 +140,52 @@ function initGame(usePCUI) {
         achievementsModal.style.display = 'block';
         updateAchievementUI();
     };
-
     closeAchievements.onclick = function() {
         achievementsModal.style.display = 'none';
     };
-
     window.onclick = function(event) {
         if (event.target === achievementsModal) {
             achievementsModal.style.display = 'none';
         }
     };
 
-    // Hotkey Listener
+    // Inventory Modal Setup
+    const inventoryButton = document.getElementById('inventoryButton');
+    const inventoryModal = document.getElementById('inventoryModal');
+    const closeInventory = document.getElementById('closeInventory');
+
+    inventoryButton.onclick = function() {
+        inventoryModal.style.display = 'block';
+        updateInventoryUI();
+    };
+    closeInventory.onclick = function() {
+        inventoryModal.style.display = 'none';
+    };
+    window.onclick = function(event) {
+        if (event.target === inventoryModal) {
+            inventoryModal.style.display = 'none';
+        }
+    };
+
     document.addEventListener('keydown', (e) => {
         keys[e.key] = true;
         if (e.key === 'Escape') togglePause();
+        if (e.key === 'z' || e.key === 'Z') {
+            inventoryModal.style.display = inventoryModal.style.display === 'block' ? 'none' : 'block';
+            updateInventoryUI();
+        }
+        if (e.key === 'f' && equipped.helm) {
+            if (equipped.helm.name === 'Wizard Hat') {
+                playerGroup.position.set((Math.random() - 0.5) * 45, 0.5, (Math.random() - 0.5) * 25);
+            } else if (equipped.helm.name === 'King Crown') {
+                spawnAlly('orange');
+            }
+        }
         const hotkeyIndex = hotkeys.indexOf(e.key.toLowerCase());
         if (hotkeyIndex !== -1) buyUpgrade(upgrades[hotkeyIndex].type);
     });
     document.addEventListener('keyup', (e) => keys[e.key] = false);
 
-    // Functions
     function showLevelDisplay() {
         const levelDisplay = document.getElementById('levelDisplay');
         if (levelDisplay) {
@@ -194,8 +219,13 @@ function initGame(usePCUI) {
         projectiles = [];
         traps.forEach(t => scene.remove(t));
         traps = [];
+        lootDrops.forEach(l => scene.remove(l));
+        lootDrops = [];
         goldenCubeExists = false;
         dayNightCycle = 0;
+        inventory = [];
+        equipped = { weapon: null, helm: null, armor: null };
+        updatePlayerVisuals();
         createPortal();
         createPortal();
         updateUI();
@@ -249,7 +279,10 @@ function initGame(usePCUI) {
         else if (type === 'baby') { size = 0.5; color = 0xff69b4; hits = 3; speed = 0.15; damage = 0.5; }
         else if (type === 'stealth') { size = 1; color = 0x666666; hits = 5; speed = 0.06; damage = 1; stealth = true; }
         else if (type === 'explosive') { size = 1.2; color = 0xff4500; hits = 10; speed = 0.04; damage = 1; explosive = true; }
-        else if (type === 'wizardKing') { size = 2; color = 0x4b0082; hits = 30; speed = 0.03; damage = 2; }
+        else if (type === 'wizardKing') { size = 2; color = 0x4b0082; hits = 15; speed = 0.03; damage = 2; } // King Cube: 15 hits
+        else if (type === 'knight') { size = 1.2; color = 0x808080; hits = 7; speed = 0.1; damage = 10; } // Knight Cube
+        else if (type === 'bodyguard') { size = 1; color = 0x333333; hits = 3; speed = 0.03; damage = 5; } // Bodyguard Cube
+        else if (type === 'philip') { size = 1.2; color = 0x4a2c2a; hits = 10; speed = 0.05; damage = 7; } // Philip Cube
         else { size = 1; color = 0xff0000; hits = 1; speed = 0.03; damage = 1; }
 
         if (playerStats.wave > 10) hits *= (1 + (playerStats.wave - 10) * 0.05);
@@ -289,15 +322,40 @@ function initGame(usePCUI) {
             enemyGroup.axe = axe;
             enemyGroup.attackCooldown = 0;
         } else if (type === 'magician' || type === 'wizardKing') {
-            const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.3, 32), new THREE.MeshPhongMaterial({ color: 0x000000, shininess: 50 }));
+            const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.3, 32), new THREE.MeshPhongMaterial({ color: type === 'magician' ? 0x000000 : 0xffff00, shininess: 50 }));
             hat.position.y = size / 2 + 0.15;
             enemyGroup.add(hat);
             enemyGroup.attackCooldown = 0;
-            if (type === 'wizardKing') enemyGroup.summonCooldown = 0;
+            if (type === 'wizardKing') {
+                enemyGroup.summonCooldown = 0;
+                const shield = new THREE.Mesh(new THREE.SphereGeometry(size * 0.6, 16, 16), new THREE.MeshPhongMaterial({ color: 0x00ffff, transparent: true, opacity: 0.3 }));
+                shield.position.y = size / 2;
+                enemyGroup.add(shield);
+            }
         } else if (type === 'baby') {
             const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.3, 16), new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 50 }));
             bottle.position.set(0.2, 0, 0);
             enemyGroup.add(bottle);
+        } else if (type === 'knight') {
+            enemyGroup.chargeCooldown = 0;
+        } else if (type === 'bodyguard') {
+            const suit = new THREE.Mesh(new THREE.BoxGeometry(size * 0.9, size * 0.8, size * 0.9), new THREE.MeshPhongMaterial({ color: 0x000080, shininess: 50 }));
+            enemyGroup.add(suit);
+            const sunglasses = new THREE.Mesh(new THREE.PlaneGeometry(size * 0.4, 0.1), new THREE.MeshBasicMaterial({ color: 0x000000 }));
+            sunglasses.position.set(0, size / 2 + 0.1, size / 2 - 0.01);
+            enemyGroup.add(sunglasses);
+            enemyGroup.attackCooldown = 0;
+        } else if (type === 'philip') {
+            const hair = new THREE.Mesh(new THREE.BoxGeometry(size * 0.6, 0.2, size * 0.6), new THREE.MeshPhongMaterial({ color: 0x000000 }));
+            hair.position.y = size / 2 + 0.1;
+            enemyGroup.add(hair);
+            const suit = new THREE.Mesh(new THREE.BoxGeometry(size * 0.9, size * 0.8, size * 0.9), new THREE.MeshPhongMaterial({ color: 0x333333 }));
+            enemyGroup.add(suit);
+            const briefcase = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.2, 0.6), new THREE.MeshPhongMaterial({ color: 0x8b4513 }));
+            briefcase.position.set(0.5, 0, 0.3);
+            enemyGroup.add(briefcase);
+            enemyGroup.briefcase = briefcase;
+            enemyGroup.attackCooldown = 0;
         }
 
         if (type !== 'normal') {
@@ -323,19 +381,29 @@ function initGame(usePCUI) {
         enemies.push(enemyGroup);
     }
 
-    function spawnAlly() {
-        const ally = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), new THREE.MeshPhongMaterial({ color: 0x0000ff, shininess: 100, specular: 0xffffff }));
+    function spawnAlly(type = 'normal') {
+        let size, color, hits, damage, attackSpeed;
+        if (type === 'orange') { size = 1; color = 0xffa500; hits = 7; damage = 3; attackSpeed = 0.3; } // Crown ally
+        else { size = 0.8; color = 0x0000ff; hits = 7; damage = 2; attackSpeed = 1.5; } // Default ally
+        const ally = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), new THREE.MeshPhongMaterial({ color, shininess: 100, specular: 0xffffff }));
         ally.position.copy(playerGroup.position);
         ally.timer = 7;
         ally.attackCooldown = 0;
-        const healthBarBg = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.1), new THREE.MeshBasicMaterial({ color: 0x666666 }));
-        const healthBar = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.1), new THREE.MeshBasicMaterial({ color: 0xff0000 }));
-        healthBarBg.position.set(0, 0.5, 0);
-        healthBar.position.set(0, 0.5, 0);
+        const healthBarBg = new THREE.Mesh(new THREE.PlaneGeometry(size, 0.1), new THREE.MeshBasicMaterial({ color: 0x666666 }));
+        const healthBar = new THREE.Mesh(new THREE.PlaneGeometry(size, 0.1), new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+        healthBarBg.position.set(0, size / 2 + 0.05, 0);
+        healthBar.position.set(0, size / 2 + 0.05, 0);
         ally.add(healthBarBg, healthBar);
         ally.healthBar = healthBar;
         ally.healthBarBg = healthBarBg;
         ally.maxTimer = 7;
+        ally.damage = damage;
+        ally.attackSpeed = attackSpeed;
+        if (type === 'orange') {
+            const sword = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 1.5), new THREE.MeshPhongMaterial({ color: 0xaaaaaa }));
+            sword.position.set(0.5, 0, 0.5);
+            ally.add(sword);
+        }
         scene.add(ally);
         allies.push(ally);
     }
@@ -393,6 +461,26 @@ function initGame(usePCUI) {
         traps.push(trap);
     }
 
+    function spawnLootDrop(position) {
+        const crate = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshPhongMaterial({ color: 0x8b4513 }));
+        crate.position.copy(position);
+        crate.position.y = 0.25;
+        const items = [
+            { type: 'weapon', name: 'Iron Sword', rarity: 'normal', damage: 2 },
+            { type: 'weapon', name: 'Golden Blade', rarity: 'unique', damage: 4 },
+            { type: 'weapon', name: 'Dragon Slayer', rarity: 'legendary', damage: 6 },
+            { type: 'helm', name: 'Leather Cap', rarity: 'normal', bonus: 10 },
+            { type: 'helm', name: 'Wizard Hat', rarity: 'unique', bonus: 0, special: 'teleport' },
+            { type: 'helm', name: 'King Crown', rarity: 'legendary', bonus: 0, special: 'summon' },
+            { type: 'armor', name: 'Chain Mail', rarity: 'normal', armor: 1 },
+            { type: 'armor', name: 'Mystic Robe', rarity: 'unique', armor: 2 },
+            { type: 'armor', name: 'Dragon Scale', rarity: 'legendary', armor: 3 }
+        ];
+        crate.item = items[Math.floor(Math.random() * items.length)];
+        scene.add(crate);
+        lootDrops.push(crate);
+    }
+
     function togglePause() {
         isPaused = !isPaused;
         const pauseMenu = document.getElementById('pauseMenu');
@@ -431,6 +519,15 @@ function initGame(usePCUI) {
                 scene.remove(coins[i]);
                 coins.splice(i, 1);
                 updateUI();
+            }
+        }
+
+        for (let i = lootDrops.length - 1; i >= 0; i--) {
+            if (playerGroup.position.distanceTo(lootDrops[i].position) < 1) {
+                inventory.push(lootDrops[i].item);
+                scene.remove(lootDrops[i]);
+                lootDrops.splice(i, 1);
+                updateInventoryUI();
             }
         }
 
@@ -475,7 +572,7 @@ function initGame(usePCUI) {
     }
 
     function attack() {
-        const damage = playerStats.damage;
+        const damage = equipped.weapon ? equipped.weapon.damage : playerStats.damage;
         const hitRange = playerStats.weaponTimer > 0 ? 4 : 3;
         for (let i = enemies.length - 1; i >= 0; i--) {
             const enemy = enemies[i];
@@ -489,6 +586,16 @@ function initGame(usePCUI) {
                 if (enemy.hitsRemaining <= 0) {
                     spawnCoin(enemy.position);
                     createDeathParticles(enemy.position, enemy.children[0].material.color.getHex());
+                    if (Math.random() < 0.1) spawnLootDrop(enemy.position);
+                    if (enemy.type === 'magician' && Math.random() < 0.2) {
+                        inventory.push({ type: 'helm', name: 'Wizard Hat', rarity: 'unique', bonus: 0, special: 'teleport' });
+                        updateInventoryUI();
+                    }
+                    if (enemy.type === 'wizardKing' && Math.random() < 0.2) {
+                        inventory.push({ type: 'helm', name: 'King Crown', rarity: 'legendary', bonus: 0, special: 'summon' });
+                        updateInventoryUI();
+                    }
+                    if (enemy.type === 'bodyguard' && Math.random() < 0.05) spawnEnemy('philip');
                     scene.remove(enemy);
                     if (enemy.type === 'golden') {
                         goldenCubeExists = false;
@@ -624,10 +731,38 @@ function initGame(usePCUI) {
                     }
                     enemy.summonCooldown = 15;
                 }
+            } else if (enemy.type === 'knight') {
+                enemy.chargeCooldown -= 0.016;
+                if (enemy.chargeCooldown <= 0 && playerGroup.position.distanceTo(enemy.position) < 5) {
+                    enemy.speed = 0.3;
+                    if (playerGroup.position.distanceTo(enemy.position) < 1) {
+                        playerStats.health -= enemy.damage;
+                        const knockback = direction.clone().multiplyScalar(2);
+                        playerGroup.position.add(knockback);
+                        enemy.chargeCooldown = 6;
+                        enemy.speed = 0.1;
+                    }
+                }
+            } else if (enemy.type === 'bodyguard') {
+                enemy.attackCooldown -= 0.016;
+                if (enemy.attackCooldown <= 0) {
+                    const projDirection = playerGroup.position.clone().sub(enemy.position).normalize();
+                    spawnProjectile(enemy.position, projDirection);
+                    enemy.attackCooldown = 1.3;
+                }
+            } else if (enemy.type === 'philip') {
+                enemy.attackCooldown -= 0.016;
+                if (enemy.attackCooldown <= 0 && playerGroup.position.distanceTo(enemy.position) < 1.5) {
+                    enemy.briefcase.rotation.x = Math.PI / 4;
+                    playerStats.health -= enemy.damage;
+                    if (Math.random() < 0.3) playerStats.stunTimer = 1;
+                    enemy.attackCooldown = 1;
+                }
+                enemy.briefcase.rotation.x *= 0.9;
             }
 
             if (enemy.type !== 'golden' && playerGroup.position.distanceTo(enemy.position) < 1) {
-                playerStats.health -= Math.max(enemy.damage - (playerStats.armorTimer > 0 ? playerStats.armor * 0.2 : playerStats.armor * 0.1), 0.1);
+                playerStats.health -= Math.max(enemy.damage - (equipped.armor ? equipped.armor.armor : playerStats.armor) * (playerStats.armorTimer > 0 ? 0.2 : 0.1), 0.1);
                 if (enemy.type === 'boss') playerStats.stunTimer = 2;
                 updateUI();
                 if (playerStats.health <= 0) {
@@ -680,7 +815,7 @@ function initGame(usePCUI) {
                 ally.position.add(direction.multiplyScalar(0.08));
                 ally.attackCooldown -= 0.016;
                 if (nearestEnemy.dist < 1 && ally.attackCooldown <= 0) {
-                    nearestEnemy.enemy.hitsRemaining -= 2;
+                    nearestEnemy.enemy.hitsRemaining -= ally.damage;
                     if (nearestEnemy.enemy.healthBar) {
                         nearestEnemy.enemy.healthBar.scale.x = nearestEnemy.enemy.hitsRemaining / nearestEnemy.enemy.maxHits;
                         nearestEnemy.enemy.healthBar.position.x = -nearestEnemy.enemy.scale.x / 2 + (nearestEnemy.enemy.scale.x * nearestEnemy.enemy.healthBar.scale.x) / 2;
@@ -691,7 +826,7 @@ function initGame(usePCUI) {
                         scene.remove(nearestEnemy.enemy);
                         enemies = enemies.filter(e => e !== nearestEnemy.enemy);
                     }
-                    ally.attackCooldown = 1.5;
+                    ally.attackCooldown = ally.attackSpeed;
                 }
             }
             ally.timer -= 0.016;
@@ -749,6 +884,63 @@ function initGame(usePCUI) {
         if (coinsElement) coinsElement.textContent = playerStats.coins;
         if (killsElement) killsElement.textContent = playerStats.kills;
         if (waveElement) waveElement.textContent = playerStats.wave;
+    }
+
+    function updateInventoryUI() {
+        const weaponSlot = document.getElementById('weaponSlot');
+        const helmSlot = document.getElementById('helmSlot');
+        const armorSlot = document.getElementById('armorSlot');
+        const inventoryList = document.getElementById('inventoryList');
+
+        weaponSlot.textContent = `Weapon: ${equipped.weapon ? equipped.weapon.name : 'None'}`;
+        helmSlot.textContent = `Helm: ${equipped.helm ? equipped.helm.name : 'None'}`;
+        armorSlot.textContent = `Armor: ${equipped.armor ? equipped.armor.name : 'None'}`;
+        inventoryList.innerHTML = '';
+        inventory.forEach((item, index) => {
+            const li = document.createElement('li');
+            li.textContent = `${item.name} (${item.rarity})`;
+            const equipButton = document.createElement('button');
+            equipButton.textContent = 'Equip';
+            equipButton.onclick = () => equipItem(index);
+            li.appendChild(equipButton);
+            inventoryList.appendChild(li);
+        });
+        updatePlayerVisuals();
+    }
+
+    function equipItem(index) {
+        const item = inventory[index];
+        if (item) {
+            equipped[item.type] = item;
+            inventory.splice(index, 1);
+            updateInventoryUI();
+            updatePlayerStats();
+        }
+    }
+
+    function updatePlayerStats() {
+        playerStats.damage = equipped.weapon ? equipped.weapon.damage : 1;
+        playerStats.armor = equipped.armor ? equipped.armor.armor : 0;
+        playerStats.maxHealth = 100 + (equipped.helm && equipped.helm.bonus ? equipped.helm.bonus : 0);
+        playerStats.health = Math.min(playerStats.health, playerStats.maxHealth);
+    }
+
+    function updatePlayerVisuals() {
+        playerGroup.children.forEach(child => {
+            if (child !== player && child !== sword) scene.remove(child);
+        });
+        if (equipped.weapon) {
+            sword.material.color.setHex(equipped.weapon.rarity === 'normal' ? 0xaaaaaa : equipped.weapon.rarity === 'unique' ? 0xffd700 : 0xff0000);
+        }
+        if (equipped.helm) {
+            const helm = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.3, 32), new THREE.MeshPhongMaterial({ color: equipped.helm.rarity === 'normal' ? 0x8b4513 : equipped.helm.rarity === 'unique' ? 0x000000 : 0xffff00 }));
+            helm.position.y = 0.65;
+            playerGroup.add(helm);
+        }
+        if (equipped.armor) {
+            const armor = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.8, 0.9), new THREE.MeshPhongMaterial({ color: equipped.armor.rarity === 'normal' ? 0x808080 : equipped.armor.rarity === 'unique' ? 0x00ffff : 0xff4500 }));
+            playerGroup.add(armor);
+        }
     }
 
     function saveScore(score) {
@@ -819,6 +1011,8 @@ function initGame(usePCUI) {
         if (Math.random() < 0.4) spawnEnemy('baby');
         if (playerStats.wave > 5 && Math.random() < 0.2) spawnEnemy('stealth');
         if (playerStats.wave > 7 && Math.random() < 0.15) spawnEnemy('explosive');
+        if (playerStats.wave > 3 && Math.random() < 0.2) spawnEnemy('knight');
+        if (playerStats.wave > 4 && Math.random() < 0.25) spawnEnemy('bodyguard');
         waveTimer = 10;
         playerStats.wave++;
         document.getElementById('levelDisplay').textContent = `Level ${playerStats.wave - 1}`;
@@ -848,7 +1042,7 @@ function initGame(usePCUI) {
             if (waveTimer <= 0 && enemies.length === 0 && enemiesToSpawn === 0) {
                 spawnWave();
             }
-            if (playerStats.weaponTimer <= 0 && playerStats.damage > 1) {
+            if (playerStats.weaponTimer <= 0 && !equipped.weapon && playerStats.damage > 1) {
                 playerStats.damage = 1;
                 sword.scale.set(1, 1, 1);
             }
